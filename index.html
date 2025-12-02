@@ -164,7 +164,7 @@
             box-shadow: 0 0 20px rgba(128, 248, 155, 0.3);
             transform: scale(1.1);
         }
-        
+
         .step-dot.completed {
             background: #000;
             color: #80F89B;
@@ -210,7 +210,7 @@
     <nav class="w-full border-b border-white/5 bg-ether-card/50 backdrop-blur-md fixed top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3">
                     <!-- Logo Placeholder -->
                     <div class="w-8 h-8 rounded bg-ether-green flex items-center justify-center text-black font-bold text-lg shadow-[0_0_15px_rgba(128,248,155,0.4)]">
                         <i class="fa-solid fa-arrow-right-arrow-left"></i>
@@ -222,15 +222,15 @@
                     <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-white/10">
                         <div class="w-2 h-2 rounded-full bg-ether-green animate-pulse"></div>
                         <span class="text-xs text-gray-400">Mainnet Alpha</span>
-                    </div>
+        </div>
                     <button id="wallet-etherlink" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-brands fa-ethereum text-ether-green"></i>
                         <span>Connect Etherlink</span>
-                    </button>
+            </button>
                     <button id="wallet-jstz" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-solid fa-bolt text-jstz-accent"></i>
                         <span>Connect Jstz</span>
-                    </button>
+            </button>
                 </div>
             </div>
         </div>
@@ -278,7 +278,7 @@
                             <div class="relative group cursor-default" id="step-4">
                                 <div class="step-dot">4</div>
                                 <span class="step-label">Complete</span>
-                            </div>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -297,8 +297,29 @@
 
                     <div class="p-6 sm:p-8 space-y-6">
                         
+                        <!-- Chain Selection -->
+                        <div class="grid grid-cols-2 gap-4 p-1 bg-black/20 rounded-xl">
+                            <button onclick="setChain('etherlink')" id="chain-etherlink" class="relative py-3 rounded-lg border border-ether-green bg-ether-green/10 text-white transition-all group overflow-hidden">
+                                <div class="flex items-center justify-center gap-2 relative z-10">
+                                    <i class="fa-brands fa-ethereum text-ether-green"></i>
+                                    <span class="text-sm font-bold">From Etherlink</span>
+                                    <i class="fa-solid fa-arrow-right text-gray-500 text-xs"></i>
+                                    <i class="fa-solid fa-layer-group text-gray-500 text-xs"></i>
+                                </div>
+                                <div class="absolute inset-0 bg-ether-green/5 opacity-0 group-hover:opacity-100 transition"></div>
+                            </button>
+                            <button onclick="setChain('jstz')" id="chain-jstz" class="relative py-3 rounded-lg border border-transparent text-gray-400 hover:text-white hover:bg-white/5 transition-all group">
+                                <div class="flex items-center justify-center gap-2 relative z-10">
+                                    <i class="fa-solid fa-layer-group text-jstz-accent"></i>
+                                    <span class="text-sm font-bold">From Jstz</span>
+                                    <i class="fa-solid fa-arrow-right text-gray-500 text-xs"></i>
+                                    <i class="fa-brands fa-ethereum text-gray-500 text-xs"></i>
+                                </div>
+                            </button>
+                        </div>
+
                         <!-- Secret Generator Section -->
-                        <div class="p-5 rounded-xl bg-gradient-to-br from-white/5 to-transparent border border-white/5 relative overflow-hidden group">
+                        <div id="secret-section" class="p-5 rounded-xl bg-gradient-to-br from-white/5 to-transparent border border-white/5 relative overflow-hidden group transition-all duration-300">
                             <div class="absolute top-0 right-0 p-3 opacity-50 group-hover:opacity-100 transition">
                                 <i class="fa-solid fa-lock text-ether-green"></i>
                             </div>
@@ -306,23 +327,23 @@
                                 <i class="fa-solid fa-key mr-1"></i> Cryptographic Proof
                             </label>
                             
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="proof-inputs">
+                                <div id="secret-container">
                                     <span class="text-[10px] text-gray-400 uppercase block mb-1">Secret (Preimage) - <span class="text-red-400">Keep Safe</span></span>
                                     <div class="relative">
                                         <input type="text" id="secret-input" class="w-full input-field rounded-lg p-3 text-sm font-mono text-white secret-blur" readonly value="Generating...">
                                         <button onclick="copyToClipboard('secret-input')" class="absolute right-2 top-2 text-gray-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
                                     </div>
                                 </div>
-                                <div>
+                                <div id="hash-container">
                                     <span class="text-[10px] text-gray-400 uppercase block mb-1">HashLock (Public)</span>
                                     <div class="relative">
                                         <input type="text" id="hash-input" class="w-full input-field rounded-lg p-3 text-sm font-mono text-gray-300" readonly value="Waiting...">
-                                        <button onclick="copyToClipboard('hash-input')" class="absolute right-2 top-2 text-gray-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
+                                        <button id="copy-hash-btn" onclick="copyToClipboard('hash-input')" class="absolute right-2 top-2 text-gray-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
                                     </div>
                                 </div>
                             </div>
-                            <button onclick="generateNewSecret()" class="mt-3 text-xs text-gray-400 hover:text-white underline decoration-dotted underline-offset-4">
+                            <button id="regen-secret-btn" onclick="generateNewSecret()" class="mt-3 text-xs text-gray-400 hover:text-white underline decoration-dotted underline-offset-4">
                                 Generate New Secret
                             </button>
                         </div>
@@ -334,21 +355,21 @@
                                     <label class="block text-sm text-gray-400 mb-1">Asset</label>
                                     <div class="flex items-center gap-2 input-field rounded-lg p-3 cursor-pointer hover:bg-white/5">
                                         <img src="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026" class="w-6 h-6 rounded-full bg-white p-0.5" id="asset-icon">
-                                        <span class="font-bold text-white" id="asset-symbol">ETH</span>
+                                        <span class="font-bold text-white" id="asset-symbol">WETH</span>
                                         <i class="fa-solid fa-chevron-down ml-auto text-xs text-gray-500"></i>
-                                    </div>
-                                </div>
-                                <div>
+                        </div>
+                    </div>
+                    <div>
                                     <label class="block text-sm text-gray-400 mb-1">Amount</label>
                                     <input type="number" id="amount-input" placeholder="0.00" class="w-full input-field rounded-lg p-3 text-white font-mono focus:outline-none">
-                                </div>
-                            </div>
+                    </div>
+                </div>
 
-                            <div>
-                                <label class="block text-sm text-gray-400 mb-1">Counterparty Address</label>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Counterparty Address</label>
                                 <input type="text" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
-                            </div>
-                            
+                </div>
+
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Timelock (Mins)</label>
@@ -366,11 +387,11 @@
                         <button onclick="executeAction()" id="main-action-btn" class="btn-primary w-full py-4 rounded-xl text-lg shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-2 group">
                             <span>Initiate Swap</span>
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
-                        </button>
+                </button>
 
                     </div>
                 </div>
-            </div>
+        </div>
 
             <!-- Right Column: Info & Console -->
             <div class="lg:col-span-5 flex flex-col gap-6">
@@ -378,7 +399,7 @@
                 <!-- Network Status -->
                 <div class="glass-card rounded-2xl p-6">
                     <h3 class="text-sm font-mono text-gray-400 mb-4 uppercase tracking-wider">Network Bridge</h3>
-                    
+            
                     <div class="flex items-center justify-between relative">
                         <!-- Left: Etherlink -->
                         <div class="text-center z-10">
@@ -394,7 +415,7 @@
                         <div class="flex-1 h-px bg-slate-700 mx-4 relative">
                             <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center z-20">
                                 <i class="fa-solid fa-arrow-right-arrow-left text-gray-500 text-xs"></i>
-                            </div>
+                    </div>
                             <div class="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-transparent to-green-500 opacity-50 animate-pulse"></div>
                         </div>
 
@@ -403,7 +424,7 @@
                             <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden group">
                                 <div class="absolute inset-0 bg-yellow-500/10 group-hover:bg-yellow-500/20 transition"></div>
                                 <i class="fa-solid fa-layer-group text-2xl text-jstz-accent"></i>
-                            </div>
+                    </div>
                             <div class="text-sm font-bold text-gray-200">Jstz</div>
                             <div class="text-[10px] text-gray-500">Waiting...</div>
                         </div>
@@ -446,7 +467,8 @@
             mode: 'create', // 'create' | 'join'
             step: 1,
             secret: null,
-            hash: null
+            hash: null,
+            chain: 'etherlink' // 'etherlink' (From Etherlink) | 'jstz' (From Jstz)
         };
 
         // Utils
@@ -486,41 +508,110 @@
             log(`Hash: ${hash.substring(0, 16)}...`, 'system');
         }
 
+        function setChain(chain) {
+            state.chain = chain;
+            const btnEth = document.getElementById('chain-etherlink');
+            const btnJstz = document.getElementById('chain-jstz');
+            const assetSymbol = document.getElementById('asset-symbol');
+            const assetIcon = document.getElementById('asset-icon');
+
+            // Reset styles
+            const activeClass = "border-ether-green bg-ether-green/10 text-white";
+            const inactiveClass = "border-transparent text-gray-400 hover:text-white hover:bg-white/5";
+
+            if (chain === 'etherlink') {
+                btnEth.className = `relative py-3 rounded-lg transition-all group overflow-hidden ${activeClass}`;
+                btnJstz.className = `relative py-3 rounded-lg transition-all group ${inactiveClass}`;
+                
+                assetSymbol.innerText = "WETH";
+                assetIcon.src = "https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026";
+                log("Direction: Etherlink -> Jstz selected.", 'info');
+            } else {
+                btnJstz.className = `relative py-3 rounded-lg transition-all group overflow-hidden border-jstz-accent bg-jstz-accent/10 text-white`;
+                btnEth.className = `relative py-3 rounded-lg transition-all group ${inactiveClass}`;
+                
+                assetSymbol.innerText = "XTZ";
+                assetIcon.src = "https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026";
+                log("Direction: Jstz -> Etherlink selected.", 'info');
+            }
+        }
+
         function setTab(mode) {
             state.mode = mode;
             const btnCreate = document.getElementById('tab-create');
             const btnJoin = document.getElementById('tab-join');
             const actionBtn = document.getElementById('main-action-btn');
-            const assetSymbol = document.getElementById('asset-symbol');
-            const assetIcon = document.getElementById('asset-icon');
+            const secretSection = document.getElementById('secret-section');
+            const timelockInput = document.querySelector('input[type="number"][value="60"]');
             
+            // Input Containers
+            const secretContainer = document.getElementById('secret-container');
+            const hashContainer = document.getElementById('hash-container');
+            const proofInputs = document.getElementById('proof-inputs');
+            const hashInput = document.getElementById('hash-input');
+            const copyHashBtn = document.getElementById('copy-hash-btn');
+            const regenSecretBtn = document.getElementById('regen-secret-btn');
+
             // Reset Button State
             actionBtn.disabled = false;
             actionBtn.onclick = executeAction;
-            actionBtn.classList.remove('bg-ether-green', 'text-black'); // Remove success state
+            actionBtn.classList.remove('bg-ether-green', 'text-black');
 
             if (mode === 'create') {
                 btnCreate.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-ether-border shadow-lg transition-all";
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all";
                 
+                // SHOW Secret Gen UI
+                secretSection.classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
+                secretContainer.style.display = 'block';
+                proofInputs.classList.remove('grid-cols-1');
+                proofInputs.classList.add('md:grid-cols-2');
+                
+                regenSecretBtn.style.display = 'block';
+                copyHashBtn.style.display = 'block';
+                
+                // Hash Input Readonly
+                hashInput.readOnly = true;
+                hashInput.classList.add('text-gray-300');
+                hashInput.classList.remove('text-white', 'bg-white/5');
+                
+                generateNewSecret();
+                
+                // Reset Timelock
+                if(timelockInput) timelockInput.value = 60;
+
                 actionBtn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>`;
                 actionBtn.className = "btn-primary w-full py-4 rounded-xl text-lg shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-2 group";
                 
-                assetSymbol.innerText = "ETH";
-                assetIcon.src = "https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026";
-                
-                log("Switched to Initiator Mode (Alice/Etherlink)", 'info');
+                log("Switched to Initiator Mode (Alice)", 'info');
             } else {
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
                 btnCreate.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all";
                 
+                // HIDE Secret Gen UI, SHOW Manual Hash Input
+                secretSection.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); // Keep active for input
+                secretContainer.style.display = 'none';
+                proofInputs.classList.remove('md:grid-cols-2');
+                proofInputs.classList.add('grid-cols-1');
+                
+                regenSecretBtn.style.display = 'none';
+                copyHashBtn.style.display = 'none';
+                
+                // Make Hash Input Editable
+                hashInput.readOnly = false;
+                hashInput.value = "";
+                hashInput.placeholder = "Paste HashLock here (0x...)";
+                hashInput.classList.remove('text-gray-300');
+                hashInput.classList.add('text-white', 'bg-white/5');
+                hashInput.focus();
+
+                // Enforce Timelock < Alice's (e.g. 30 mins)
+                if(timelockInput) timelockInput.value = 30;
+
                 actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>`;
                 actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg hover:bg-yellow-400 transition flex items-center justify-center gap-2 group";
                 
-                assetSymbol.innerText = "XTZ"; // Or Jstz token
-                assetIcon.src = "https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026";
-                
-                log("Switched to Participant Mode (Bob/Jstz)", 'info');
+                log("Switched to Participant Mode (Bob). Enter HashLock manually.", 'info');
             }
         }
 
@@ -541,7 +632,7 @@
                     dot.innerHTML = '<i class="fa-solid fa-check"></i>';
                 } else if (i === step) {
                     dot.classList.add('active');
-                }
+        }
             });
 
             // Bar width
@@ -563,7 +654,7 @@
                     await new Promise(r => setTimeout(r, 2000)); 
                     
                     log("HTLC Contract Deployed on Etherlink: 0x71C...9A2", 'success');
-                    log("Funds Locked: " + document.querySelector('#amount-input')?.value + " ETH", 'success');
+                    log("Funds Locked: " + document.querySelector('#amount-input')?.value + " WETH", 'success');
                     log("Waiting for Bob to lock funds on Jstz...", 'info');
                     
                     updateProgress(2);
@@ -573,8 +664,8 @@
                     // Auto-simulate Bob's action for the demo? 
                     // Or prompt user to switch tabs.
                     log("DEMO INFO: Switch to 'Join Swap (Bob)' to continue, or wait for auto-simulation.", 'system');
-                    
-                    setTimeout(() => {
+                
+                setTimeout(() => {
                         log("Bob has locked funds on Jstz! (Simulated)", 'system');
                         updateProgress(3);
                         btn.disabled = false;
@@ -621,7 +712,7 @@
              await new Promise(r => setTimeout(r, 1000));
              log("Transaction confirmed on Jstz!", 'success');
              log("Secret Revealed: " + state.secret, 'system');
-             log("Alice has successfully swapped ETH for Jstz assets.", 'success');
+             log("Alice has successfully swapped WETH for Jstz assets.", 'success');
              
              updateProgress(4);
              
@@ -636,7 +727,7 @@
             log("Bob: Using revealed secret to claim Etherlink funds...", 'warning');
             await new Promise(r => setTimeout(r, 1000));
             log("Transaction confirmed on Etherlink!", 'success');
-            log("Bob has successfully swapped Jstz assets for ETH.", 'success');
+            log("Bob has successfully swapped Jstz assets for WETH.", 'success');
             
             const btn = document.getElementById('main-action-btn');
             btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
@@ -654,7 +745,7 @@
         // Init
         generateNewSecret();
         updateProgress(1);
-
+        
         // Wallet Events
         document.getElementById('wallet-etherlink').addEventListener('click', (e) => {
             e.currentTarget.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> 0x71...9A2`;
