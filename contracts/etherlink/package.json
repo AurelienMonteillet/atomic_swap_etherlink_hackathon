@@ -1,0 +1,25 @@
+{
+  "name": "htlc-etherlink",
+  "version": "1.0.0",
+  "description": "HTLC Contract for Etherlink",
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:etherlink": "hardhat run scripts/deploy.js --network etherlink",
+    "deploy:etherlink-testnet": "hardhat run scripts/deploy.js --network etherlinkTestnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.1"
+  },
+  "keywords": [
+    "htlc",
+    "etherlink",
+    "atomic-swap"
+  ],
+  "license": "MIT"
+}
+

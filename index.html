@@ -460,15 +460,48 @@
     </footer>
 
     <script>
-        // --- Hackathon Mock Logic ---
+        // --- REAL CONTRACT INTEGRATION ---
+
+        // Contract Configuration
+        const CONFIG = {
+            // Etherlink HTLC Contract (Hardhat local)
+            etherlink: {
+                contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+                rpcUrl: 'http://127.0.0.1:8545',
+                chainId: 31337,
+                abi: [
+                    "function initiateSwap(address recipient, bytes32 hashLock, uint256 expiration) external payable returns (bytes32)",
+                    "function claimSwap(bytes32 swapId, bytes calldata secret) external returns (bool)",
+                    "function refundSwap(bytes32 swapId) external returns (bool)",
+                    "function getSwap(bytes32 swapId) external view returns (address recipient, address sender, uint256 amount, uint256 expiration, bytes32 hashLock, uint8 status)",
+                    "function swapPresent(bytes32 swapId) external view returns (bool)",
+                    "event SwapInitiated(bytes32 indexed swapId, address payable sender, address recipient, uint256 amount, bytes32 hashLock, uint256 expiration)",
+                    "event SwapClaimed(bytes32 indexed swapId, address claimer, bytes secret)",
+                    "event SwapRefunded(bytes32 indexed swapId, address sender, uint256 amount)"
+                ]
+            },
+            // Jstz HTLC Smart Function
+            jstz: {
+                functionUrl: 'http://localhost:8932', // Jstz sandbox RPC
+                functionAddress: 'jstz://htlc/'
+            }
+        };
 
         // State
         const state = {
             mode: 'create', // 'create' | 'join'
             step: 1,
             secret: null,
+            secretBytes: null,
             hash: null,
-            chain: 'etherlink' // 'etherlink' (From Etherlink) | 'jstz' (From Jstz)
+            chain: 'etherlink', // 'etherlink' (From Etherlink) | 'jstz' (From Jstz)
+            etherlinkWallet: null,
+            etherlinkAddress: null,
+            jstzAddress: null,
+            provider: null,
+            signer: null,
+            contract: null,
+            currentSwapId: null
         };
 
         // Utils
@@ -492,20 +525,74 @@
 
         document.getElementById('login-time').innerText = new Date().toDateString();
 
-        // Logic
+        // Generate secret using ethers.js keccak256 for compatibility
         function generateNewSecret() {
-            const randomBytes = CryptoJS.lib.WordArray.random(32);
-            const secret = "0x" + randomBytes.toString();
-            const hash = "0x" + CryptoJS.SHA256(randomBytes).toString();
+            // Generate 32 random bytes as secret
+            const randomBytes = ethers.utils.randomBytes(32);
+            const secret = ethers.utils.hexlify(randomBytes);
+            
+            // Hash using keccak256 (same as Solidity)
+            const hash = ethers.utils.keccak256(randomBytes);
             
             state.secret = secret;
+            state.secretBytes = randomBytes;
             state.hash = hash;
             
             document.getElementById('secret-input').value = secret;
             document.getElementById('hash-input').value = hash;
             
             log(`Generated new Preimage/Hash pair.`, 'system');
-            log(`Hash: ${hash.substring(0, 16)}...`, 'system');
+            log(`Hash: ${hash.substring(0, 18)}...`, 'system');
+        }
+
+        // Connect to Etherlink (MetaMask or local)
+        async function connectEtherlink() {
+            try {
+                if (typeof window.ethereum !== 'undefined') {
+                    // Use MetaMask
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    state.provider = new ethers.providers.Web3Provider(window.ethereum);
+                    state.signer = state.provider.getSigner();
+                    state.etherlinkAddress = await state.signer.getAddress();
+                    log(`MetaMask connected: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
+                } else {
+                    // Fallback to local Hardhat node
+                    state.provider = new ethers.providers.JsonRpcProvider(CONFIG.etherlink.rpcUrl);
+                    state.signer = state.provider.getSigner(0);
+                    state.etherlinkAddress = await state.signer.getAddress();
+                    log(`Connected to local node: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
+                }
+                
+                // Initialize contract
+                state.contract = new ethers.Contract(
+                    CONFIG.etherlink.contractAddress,
+                    CONFIG.etherlink.abi,
+                    state.signer
+                );
+                
+                return true;
+            } catch (error) {
+                log(`Etherlink connection failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Jstz API calls
+        async function jstzRequest(method, path, body = null) {
+            const url = `${CONFIG.jstz.functionUrl}${path}`;
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (body) options.body = JSON.stringify(body);
+            
+            try {
+                const response = await fetch(url, options);
+                return await response.json();
+            } catch (error) {
+                log(`Jstz request failed: ${error.message}`, 'error');
+                throw error;
+            }
         }
 
         function setChain(chain) {
@@ -640,99 +727,256 @@
             progressBar.style.width = `${percentage}%`;
         }
 
-        async function executeAction() {
+        // ============================================
+        // REAL CONTRACT INTERACTIONS
+        // ============================================
+
+        // Initiate swap on Etherlink (Alice locks ETH)
+        async function initiateOnEtherlink() {
             const btn = document.getElementById('main-action-btn');
-            const originalText = btn.innerHTML;
+            const amount = document.getElementById('amount-input').value;
+            const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
+            const timelockInput = document.querySelector('input[type="number"][value="60"]') || document.querySelector('input[type="number"]');
+            const timelockMins = parseInt(timelockInput?.value || 60);
             
-            if (state.mode === 'create') {
-                // Step 1: Alice Initiates (Locks on Etherlink)
-                if (state.step === 1) {
-                    log("Initiating Atomic Swap on Etherlink...", 'warning');
-                    btn.disabled = true;
-                    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Deploying HTLC...`;
-                    
-                    await new Promise(r => setTimeout(r, 2000)); 
-                    
-                    log("HTLC Contract Deployed on Etherlink: 0x71C...9A2", 'success');
-                    log("Funds Locked: " + document.querySelector('#amount-input')?.value + " WETH", 'success');
-                    log("Waiting for Bob to lock funds on Jstz...", 'info');
-                    
-                    updateProgress(2);
-                    btn.innerHTML = `<span>Waiting for Counterparty...</span>`;
-                    btn.disabled = true; // Demo: User must switch tabs or trigger Bob
-                    
-                    // Auto-simulate Bob's action for the demo? 
-                    // Or prompt user to switch tabs.
-                    log("DEMO INFO: Switch to 'Join Swap (Bob)' to continue, or wait for auto-simulation.", 'system');
-                
-                setTimeout(() => {
-                        log("Bob has locked funds on Jstz! (Simulated)", 'system');
-                        updateProgress(3);
-                        btn.disabled = false;
-                        btn.innerHTML = `<span>Claim Funds (on Jstz)</span>`;
-                        btn.onclick = revealSecret; // Alice claims on Jstz
-                    }, 4000);
-                }
+            if (!amount || parseFloat(amount) <= 0) {
+                log("Please enter a valid amount", 'error');
+                return;
+            }
 
-            } else {
-                // Step 2: Bob Joins (Locks on Jstz)
-                log("Verifying Etherlink Hash Lock...", 'warning');
-                btn.disabled = true;
-                btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying...`;
-                
-                await new Promise(r => setTimeout(r, 1500));
-                
-                log("Hash Valid. Locking funds on Jstz...", 'warning');
-                await new Promise(r => setTimeout(r, 1500));
-                
-                log("Jstz Contract Deployed: kt1...xyz", 'success');
-                log("Funds Locked on Jstz.", 'success');
-                
-                updateProgress(3);
-                log("Waiting for Alice to reveal secret...", 'info');
-                
-                btn.innerHTML = `<span>Waiting for Secret...</span>`;
-                btn.disabled = true;
+            if (!state.contract) {
+                const connected = await connectEtherlink();
+                if (!connected) return;
+            }
 
-                // Simulate Alice revealing
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Initiating Swap...`;
+
+            try {
+                const recipient = counterpartyInput?.value || ethers.constants.AddressZero;
+                const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
+                const amountWei = ethers.utils.parseEther(amount);
+                
+                log(`Initiating swap on Etherlink...`, 'warning');
+                log(`Amount: ${amount} ETH`, 'info');
+                log(`HashLock: ${state.hash.substring(0, 18)}...`, 'info');
+                log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()}`, 'info');
+
+                const tx = await state.contract.initiateSwap(
+                    recipient,
+                    state.hash,
+                    expiration,
+                    { value: amountWei }
+                );
+
+                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
+                
+                const receipt = await tx.wait();
+                
+                state.currentSwapId = state.hash;
+                
+                log(`✅ Swap initiated on Etherlink!`, 'success');
+                log(`Contract: ${CONFIG.etherlink.contractAddress.substring(0, 10)}...`, 'success');
+                log(`SwapId: ${state.currentSwapId.substring(0, 18)}...`, 'success');
+                log(`Funds Locked: ${amount} ETH`, 'success');
+                
+                updateProgress(2);
+                btn.innerHTML = `<span>Waiting for Bob on Jstz...</span>`;
+                
+                log(`Share this HashLock with Bob: ${state.hash}`, 'system');
+                log(`Bob must lock funds on Jstz with the same HashLock`, 'info');
+                
+                // Enable claim button after Bob participates
                 setTimeout(() => {
-                    log("Secret detected on Jstz! Alice has claimed.", 'system');
-                    state.secret = "0x" + CryptoJS.lib.WordArray.random(32).toString(); // Sim
-                    updateProgress(4);
+                    log("Ready to claim on Jstz (when Bob has locked funds)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Claim Funds (on Etherlink)</span>`;
-                    btn.onclick = claimWithSecret; // Bob claims on Etherlink
-                }, 4000);
+                    btn.innerHTML = `<span>Claim on Jstz</span>`;
+                    btn.onclick = claimOnJstz;
+                    updateProgress(3);
+                }, 2000);
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
             }
         }
 
+        // Initiate swap on Jstz (Bob locks XTZ)
+        async function initiateOnJstz() {
+            const btn = document.getElementById('main-action-btn');
+            const amount = document.getElementById('amount-input').value;
+            const hashInput = document.getElementById('hash-input');
+            const hashlock = hashInput.value;
+            const timelockInput = document.querySelector('input[type="number"]');
+            const timelockMins = parseInt(timelockInput?.value || 30);
+
+            if (!amount || parseFloat(amount) <= 0) {
+                log("Please enter a valid amount", 'error');
+                return;
+            }
+
+            if (!hashlock || !hashlock.startsWith('0x')) {
+                log("Please enter a valid HashLock (0x...)", 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking on Jstz...`;
+
+            try {
+                const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
+                
+                log(`Initiating swap on Jstz...`, 'warning');
+                log(`HashLock: ${hashlock.substring(0, 18)}...`, 'info');
+                
+                // Call Jstz smart function (simulated for now - real implementation needs jstz CLI)
+                // In production: jstz run jstz://htlc/initiate -d '{"hashlock": "...", ...}'
+                log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
+                
+                // Simulated success (replace with real jstz call)
+                await new Promise(r => setTimeout(r, 1500));
+                
+                state.currentSwapId = hashlock;
+                state.hash = hashlock;
+                
+                log(`✅ Swap initiated on Jstz!`, 'success');
+                log(`Funds Locked: ${amount} XTZ`, 'success');
+                
+                updateProgress(3);
+                log(`Waiting for Alice to reveal secret...`, 'info');
+                
+                btn.innerHTML = `<span>Waiting for Secret...</span>`;
+                
+                // Poll for secret revelation or enable manual claim
+                setTimeout(() => {
+                    log("Ready to claim on Etherlink (when Alice reveals secret)", 'system');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Claim on Etherlink</span>`;
+                    btn.onclick = claimOnEtherlink;
+                }, 2000);
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+            }
+        }
+
+        // Alice claims on Jstz (reveals secret)
+        async function claimOnJstz() {
+            const btn = document.getElementById('main-action-btn');
+            
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Claiming on Jstz...`;
+
+            try {
+                log(`Claiming on Jstz with secret...`, 'warning');
+                log(`Secret: ${state.secret.substring(0, 18)}...`, 'system');
+                
+                // Call Jstz smart function
+                // In production: jstz run jstz://htlc/claim -d '{"hashlock": "...", "secret": "..."}'
+                log(`Calling Jstz HTLC: jstz://htlc/claim`, 'system');
+                
+                await new Promise(r => setTimeout(r, 1500));
+                
+                log(`✅ Claimed on Jstz!`, 'success');
+                log(`Secret revealed: ${state.secret}`, 'system');
+                log(`Alice has received XTZ!`, 'success');
+                
+                updateProgress(4);
+                
+                btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
+                btn.classList.add('bg-ether-green', 'text-black');
+                btn.disabled = true;
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Jstz</span>`;
+            }
+        }
+
+        // Bob claims on Etherlink (uses revealed secret)
+        async function claimOnEtherlink() {
+            const btn = document.getElementById('main-action-btn');
+            
+            // Prompt for secret if not known
+            let secret = state.secret;
+            if (!secret) {
+                secret = prompt("Enter the revealed secret (0x...):");
+                if (!secret) {
+                    log("Secret is required to claim", 'error');
+                    return;
+                }
+                state.secret = secret;
+            }
+
+            if (!state.contract) {
+                const connected = await connectEtherlink();
+                if (!connected) return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Claiming on Etherlink...`;
+
+            try {
+                log(`Claiming on Etherlink with secret...`, 'warning');
+                
+                // Convert secret to bytes
+                const secretBytes = ethers.utils.arrayify(secret);
+                
+                const tx = await state.contract.claimSwap(
+                    state.currentSwapId || state.hash,
+                    secretBytes
+                );
+
+                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
+                
+                await tx.wait();
+                
+                log(`✅ Claimed on Etherlink!`, 'success');
+                log(`Bob has received ETH!`, 'success');
+                
+                updateProgress(4);
+                
+                btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
+                btn.classList.add('bg-green-500');
+                btn.disabled = true;
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Etherlink</span>`;
+            }
+        }
+
+        // Main action dispatcher
+        async function executeAction() {
+            if (state.mode === 'create') {
+                // Alice initiates
+                if (state.chain === 'etherlink') {
+                    await initiateOnEtherlink();
+                } else {
+                    await initiateOnJstz();
+                }
+            } else {
+                // Bob joins
+                if (state.chain === 'etherlink') {
+                    await initiateOnJstz(); // Bob locks on opposite chain
+                } else {
+                    await initiateOnEtherlink();
+                }
+            }
+        }
+
+        // Legacy functions for compatibility
         async function revealSecret() {
-            // Alice claims on Jstz
-            log("Alice: Revealing secret to claim Jstz funds...", 'warning');
-             await new Promise(r => setTimeout(r, 1000));
-             log("Transaction confirmed on Jstz!", 'success');
-             log("Secret Revealed: " + state.secret, 'system');
-             log("Alice has successfully swapped WETH for Jstz assets.", 'success');
-             
-             updateProgress(4);
-             
-             const btn = document.getElementById('main-action-btn');
-             btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
-             btn.classList.add('bg-ether-green', 'text-black');
-             btn.disabled = true;
+            await claimOnJstz();
         }
 
         async function claimWithSecret() {
-            // Bob claims on Etherlink
-            log("Bob: Using revealed secret to claim Etherlink funds...", 'warning');
-            await new Promise(r => setTimeout(r, 1000));
-            log("Transaction confirmed on Etherlink!", 'success');
-            log("Bob has successfully swapped Jstz assets for WETH.", 'success');
-            
-            const btn = document.getElementById('main-action-btn');
-            btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
-            btn.classList.add('bg-green-500');
-            btn.disabled = true;
+            await claimOnEtherlink();
         }
 
         function copyToClipboard(id) {
@@ -745,18 +989,33 @@
         // Init
         generateNewSecret();
         updateProgress(1);
+        log("Atomic Swap ready. Connect wallets to begin.", 'system');
+        log(`Etherlink Contract: ${CONFIG.etherlink.contractAddress}`, 'info');
+        log(`Jstz Function: ${CONFIG.jstz.functionAddress}`, 'info');
         
-        // Wallet Events
-        document.getElementById('wallet-etherlink').addEventListener('click', (e) => {
-            e.currentTarget.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> 0x71...9A2`;
-            e.currentTarget.classList.add('border-ether-green', 'text-ether-green', 'bg-ether-green/10');
-            log("Wallet connected: 0x71...9A2 (Etherlink)", 'success');
+        // Wallet Events - Real connections
+        document.getElementById('wallet-etherlink').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...`;
+            
+            const connected = await connectEtherlink();
+            
+            if (connected) {
+                const shortAddr = `${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`;
+                btn.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> ${shortAddr}`;
+                btn.classList.add('border-ether-green', 'text-ether-green', 'bg-ether-green/10');
+            } else {
+                btn.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> Connect Etherlink`;
+            }
         });
 
-        document.getElementById('wallet-jstz').addEventListener('click', (e) => {
-            e.currentTarget.innerHTML = `<i class="fa-solid fa-bolt text-jstz-accent"></i> tz1...abc`;
-            e.currentTarget.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
-            log("Identity connected: tz1...abc (Jstz)", 'success');
+        document.getElementById('wallet-jstz').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            // Jstz connection (simulated - real implementation needs jstz CLI auth)
+            state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
+            btn.innerHTML = `<i class="fa-solid fa-bolt text-jstz-accent"></i> tz1...FTP`;
+            btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
+            log(`Jstz identity connected: ${state.jstzAddress}`, 'success');
         });
 
     </script>

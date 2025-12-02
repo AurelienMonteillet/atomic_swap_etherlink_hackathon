@@ -1,0 +1,32 @@
+{
+  "name": "atomic-swap-contracts",
+  "version": "1.0.0",
+  "description": "HTLC Contracts for Etherlink x Jstz Atomic Swaps",
+  "type": "module",
+  "scripts": {
+    "jstz:sandbox": "jstz sandbox --container start -d",
+    "jstz:sandbox:stop": "jstz sandbox --container stop",
+    "jstz:deploy": "jstz deploy jstz/htlc.js --name htlc -n dev",
+    "jstz:test": "jstz run jstz://htlc/ -n dev",
+    "eth:compile": "cd etherlink && npx hardhat compile",
+    "eth:deploy:local": "cd etherlink && npx hardhat run scripts/deploy.js --network localhost",
+    "eth:deploy:etherlink": "cd etherlink && npx hardhat run scripts/deploy.js --network etherlink",
+    "eth:test": "cd etherlink && npx hardhat test",
+    "deploy:all": "npm run jstz:deploy && npm run eth:deploy:etherlink"
+  },
+  "dependencies": {
+    "@jstz-dev/cli": "^0.1.1-alpha.5"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "atomic-swap",
+    "htlc",
+    "etherlink",
+    "jstz",
+    "tezos",
+    "cross-chain"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

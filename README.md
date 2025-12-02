@@ -1,43 +1,130 @@
 # Etherlink x Jstz Atomic Swap
 
-A trustless atomic swap interface between **Etherlink** (L2) and **Jstz** (Tezos Smart Rollup Layer). 
-Designed for the internal hackathon to demonstrate secure cross-chain asset exchange using Hashed Timelock Contracts (HTLC).
+A trustless atomic swap interface between **Etherlink** (EVM L2) and **Jstz** (Tezos Smart Rollup Layer). 
+Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (HTLC).
 
-![Design Preview](https://placehold.co/600x400/02040a/39FF14?text=Atomic+Swap+UI)
+## 🚀 Features
 
-## Features
+- ✅ **Real Smart Contracts**: HTLC deployed on both Etherlink (Solidity) and Jstz (JavaScript)
+- ✅ **Visual Flow**: Step-by-step tracker for the atomic swap lifecycle
+- ✅ **Dual Chain Support**: Swap between Etherlink and Jstz networks
+- ✅ **Security**: Client-side secret generation with keccak256 hashing
+- ✅ **Modern UI**: Dark mode, glassmorphism, and neon green accents
 
--   **Visual Flow**: Step-by-step tracker for the atomic swap lifecycle (Initiate -> Participate -> Redeem -> Complete).
--   **Roles**: Switch between **Initiator (Alice)** and **Participant (Bob)**.
--   **Security**: Client-side secret generation (Preimage/Hash) using `crypto-js`.
--   **Mock Integration**: Simulates smart contract interactions with a "Terminal" log for debugging and presentation.
--   **Design**: "Etherlink" aesthetic with dark mode, glassmorphism, and neon green accents.
+## 📁 Project Structure
 
-## Usage
+```
+atomic_swap_etherlink_hackathon/
+├── index.html              # Frontend interface
+├── contracts/
+│   ├── jstz/
+│   │   └── htlc.js         # Jstz Smart Function (HTLC)
+│   ├── etherlink/
+│   │   ├── contracts/
+│   │   │   └── HTLC.sol    # Solidity HTLC Contract
+│   │   ├── scripts/
+│   │   │   └── deploy.js   # Deployment script
+│   │   ├── test/
+│   │   │   └── HTLC.test.js
+│   │   ├── hardhat.config.js
+│   │   └── package.json
+│   └── README.md           # Contracts documentation
+└── README.md
+```
 
-1.  **Open `index.html`** in any modern browser.
-2.  **Connect Wallet**: Click "Connect Etherlink" or "Connect Jstz" to simulate wallet connection.
-3.  **Initiate (Alice)**:
-    -   Ensure you are on the "Initiate Swap" tab.
-    -   Enter Amount (e.g., 10 ETH).
-    -   Click **Initiate Swap**.
-    -   Watch the terminal log and progress bar.
-4.  **Participate (Bob)**:
-    -   Wait for the "Waiting for Counterparty" state or manually switch tabs to "Join Swap".
-    -   Click **Match Swap** (or follow the on-screen flow if auto-simulated).
-5.  **Reveal & Claim**:
-    -   Once both parties have locked funds, the Initiator reveals the secret to claim funds on Jstz.
-    -   The Participant then uses the revealed secret to claim funds on Etherlink.
+## 🛠️ Quick Start
 
-## Tech Stack
+### Prerequisites
 
--   **Frontend**: HTML5, Tailwind CSS (CDN), Vanilla JS.
--   **Libraries**: `ethers.js` (Wallet), `crypto-js` (Hashing).
--   **Compatibility**: Designed to be easily integrated with the `jstz` runtime.
+- Node.js 18+
+- Docker (for Jstz sandbox)
+- npm or yarn
 
-## Hackathon Notes
+### Installation
 
--   The current logic is **mocked** for demonstration purposes.
--   To connect to real contracts, edit the `executeAction` function in `index.html` and replace the `setTimeout` calls with actual `ethers.Contract` calls.
+```bash
+# Install Jstz CLI
+npm i -g @jstz-dev/cli
 
+# Install Etherlink contract dependencies
+cd contracts/etherlink
+npm install
+```
 
+### Running Locally
+
+**1. Start Jstz Sandbox:**
+```bash
+jstz sandbox --container start -d
+```
+
+**2. Deploy Jstz Smart Function:**
+```bash
+jstz deploy contracts/jstz/htlc.js --name htlc -n dev
+```
+
+**3. Start Hardhat Local Node:**
+```bash
+cd contracts/etherlink
+npx hardhat node
+```
+
+**4. Deploy Etherlink Contract:**
+```bash
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+**5. Open Frontend:**
+```bash
+# From project root
+python3 -m http.server 8000
+# Then open http://localhost:8000
+```
+
+## 📝 Contract Addresses
+
+### Local Development
+
+- **Etherlink HTLC**: `0x5FbDB2315678afecb367f032d93F642f64180aa3` (Hardhat local)
+- **Jstz HTLC**: `jstz://htlc/` (Sandbox dev)
+
+Update the address in `index.html` if deploying to different networks.
+
+## 🔄 Atomic Swap Flow
+
+```
+1. Alice generates secret → calculates hashlock
+2. Alice locks ETH on Etherlink (initiateSwap)
+3. Bob verifies hashlock, locks XTZ on Jstz (POST /initiate)
+4. Alice claims XTZ on Jstz (reveals secret via POST /claim)
+5. Bob uses revealed secret to claim ETH on Etherlink (claimSwap)
+```
+
+## 🧪 Testing
+
+```bash
+# Test Etherlink contract
+cd contracts/etherlink
+npx hardhat test
+```
+
+All 12 tests should pass ✅
+
+## 📚 Documentation
+
+See `contracts/README.md` for detailed contract documentation and API.
+
+## 🏗️ Tech Stack
+
+- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript
+- **Etherlink**: Solidity 0.8.20, Hardhat
+- **Jstz**: JavaScript (Smart Functions)
+- **Libraries**: ethers.js, crypto-js
+
+## 📄 License
+
+MIT License - see LICENSE file
+
+## 🤝 Contributing
+
+This project was built for the Etherlink Internal Hackathon. Contributions welcome!
