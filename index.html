@@ -225,12 +225,13 @@
         </div>
                     <button id="wallet-etherlink" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-brands fa-ethereum text-ether-green"></i>
-                        <span>Connect Etherlink</span>
-            </button>
+                        <span id="wallet-etherlink-text">Connect Etherlink</span>
+                        <span id="wallet-balance" class="hidden text-ether-green font-mono text-xs"></span>
+                    </button>
                     <button id="wallet-jstz" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-solid fa-bolt text-jstz-accent"></i>
-                        <span>Connect Jstz</span>
-            </button>
+                        <span id="wallet-jstz-text">Connect Jstz</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -351,19 +352,24 @@
                         <!-- Input Fields -->
                         <div class="space-y-4">
                             <div class="grid grid-cols-2 gap-4">
-                                <div>
+                                <div class="relative">
                                     <label class="block text-sm text-gray-400 mb-1">Asset</label>
-                                    <div class="flex items-center gap-2 input-field rounded-lg p-3 cursor-pointer hover:bg-white/5">
-                                        <img src="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026" class="w-6 h-6 rounded-full bg-white p-0.5" id="asset-icon">
-                                        <span class="font-bold text-white" id="asset-symbol">WETH</span>
+                                    <div onclick="toggleTokenSelector()" class="flex items-center gap-2 input-field rounded-lg p-3 cursor-pointer hover:bg-white/10 transition">
+                                        <img src="https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026" class="w-6 h-6 rounded-full bg-white p-0.5" id="asset-icon">
+                                        <span class="font-bold text-white" id="asset-symbol">XTZ</span>
                                         <i class="fa-solid fa-chevron-down ml-auto text-xs text-gray-500"></i>
-                        </div>
-                    </div>
-                    <div>
+                                    </div>
+                                    <!-- Token Dropdown -->
+                                    <div id="token-dropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-ether-card border border-white/10 rounded-lg shadow-xl z-50 flex-col max-h-60 overflow-y-auto">
+                                        <!-- Tokens will be rendered here by JS -->
+                                    </div>
+                                </div>
+                                <div>
                                     <label class="block text-sm text-gray-400 mb-1">Amount</label>
                                     <input type="number" id="amount-input" placeholder="0.00" class="w-full input-field rounded-lg p-3 text-white font-mono focus:outline-none">
-                    </div>
-                </div>
+                                    <div id="selected-token-balance" class="text-xs text-gray-500 mt-1">Balance: -- </div>
+                                </div>
+                            </div>
 
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Counterparty Address</label>
@@ -487,6 +493,52 @@
             }
         };
 
+        // ERC20 ABI for token interactions
+        const ERC20_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)",
+            "function approve(address spender, uint256 amount) returns (bool)",
+            "function allowance(address owner, address spender) view returns (uint256)",
+            "function transfer(address to, uint256 amount) returns (bool)"
+        ];
+
+        // Etherlink Mainnet Tokens
+        const TOKENS = {
+            XTZ: {
+                symbol: 'XTZ',
+                name: 'Tezos',
+                address: null, // Native token
+                decimals: 18,
+                icon: 'https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026',
+                isNative: true
+            },
+            WETH: {
+                symbol: 'WETH',
+                name: 'Wrapped Eth',
+                address: '0x86932ff467A7e055d679F7578A0A4F96Be287861',
+                decimals: 18,
+                icon: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026',
+                isNative: false
+            },
+            USDT: {
+                symbol: 'USDT',
+                name: 'Tether USD',
+                address: '0xf7f007dc8Cb507e25e8b7dbDa600c07FdCF9A75B',
+                decimals: 6,
+                icon: 'https://cryptologos.cc/logos/tether-usdt-logo.svg?v=026',
+                isNative: false
+            },
+            USDC: {
+                symbol: 'USDC',
+                name: 'USD Coin',
+                address: '0x4C2AA252BEe766D3399850569713b55178934849',
+                decimals: 6,
+                icon: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.svg?v=026',
+                isNative: false
+            }
+        };
+
         // State
         const state = {
             mode: 'create', // 'create' | 'join'
@@ -501,7 +553,10 @@
             provider: null,
             signer: null,
             contract: null,
-            currentSwapId: null
+            currentSwapId: null,
+            selectedToken: 'XTZ', // Default token
+            tokenBalances: {},
+            tokenSelectorOpen: false
         };
 
         // Utils
@@ -595,12 +650,172 @@
             }
         }
 
+        // ============================================
+        // TOKEN & BALANCE MANAGEMENT
+        // ============================================
+
+        // Get balance for a specific token
+        async function getTokenBalance(tokenSymbol) {
+            if (!state.provider || !state.etherlinkAddress) return '0';
+            
+            const token = TOKENS[tokenSymbol];
+            if (!token) return '0';
+
+            try {
+                if (token.isNative) {
+                    // Native XTZ balance
+                    const balance = await state.provider.getBalance(state.etherlinkAddress);
+                    return ethers.utils.formatUnits(balance, token.decimals);
+                } else {
+                    // ERC20 token balance
+                    const tokenContract = new ethers.Contract(token.address, ERC20_ABI, state.provider);
+                    const balance = await tokenContract.balanceOf(state.etherlinkAddress);
+                    return ethers.utils.formatUnits(balance, token.decimals);
+                }
+            } catch (error) {
+                console.error(`Error fetching ${tokenSymbol} balance:`, error);
+                return '0';
+            }
+        }
+
+        // Fetch all token balances
+        async function fetchAllBalances() {
+            if (!state.provider || !state.etherlinkAddress) return;
+
+            log('Fetching token balances...', 'system');
+            
+            for (const [symbol, token] of Object.entries(TOKENS)) {
+                const balance = await getTokenBalance(symbol);
+                state.tokenBalances[symbol] = balance;
+            }
+
+            // Update UI
+            updateBalanceDisplay();
+            log('Balances updated', 'success');
+        }
+
+        // Update balance display in UI
+        function updateBalanceDisplay() {
+            const balanceEl = document.getElementById('selected-token-balance');
+            const walletBalanceEl = document.getElementById('wallet-balance');
+            
+            if (balanceEl && state.selectedToken) {
+                const balance = state.tokenBalances[state.selectedToken] || '0';
+                const formatted = parseFloat(balance).toFixed(4);
+                balanceEl.innerText = `Balance: ${formatted} ${state.selectedToken}`;
+            }
+            
+            // Update wallet button with XTZ balance
+            if (walletBalanceEl && state.tokenBalances['XTZ']) {
+                const xtzBalance = parseFloat(state.tokenBalances['XTZ']).toFixed(2);
+                walletBalanceEl.innerText = `${xtzBalance} XTZ`;
+            }
+        }
+
+        // Select a token
+        function selectToken(symbol) {
+            const token = TOKENS[symbol];
+            if (!token) return;
+
+            state.selectedToken = symbol;
+            
+            // Update UI
+            document.getElementById('asset-icon').src = token.icon;
+            document.getElementById('asset-symbol').innerText = token.symbol;
+            
+            // Close dropdown
+            toggleTokenSelector(false);
+            
+            // Update balance display
+            updateBalanceDisplay();
+            
+            log(`Selected token: ${token.name} (${token.symbol})`, 'info');
+        }
+
+        // Toggle token selector dropdown
+        function toggleTokenSelector(forceState = null) {
+            const dropdown = document.getElementById('token-dropdown');
+            if (!dropdown) return;
+
+            state.tokenSelectorOpen = forceState !== null ? forceState : !state.tokenSelectorOpen;
+            
+            if (state.tokenSelectorOpen) {
+                dropdown.classList.remove('hidden');
+                dropdown.classList.add('flex');
+            } else {
+                dropdown.classList.add('hidden');
+                dropdown.classList.remove('flex');
+            }
+        }
+
+        // Render token list in dropdown
+        function renderTokenDropdown() {
+            const dropdown = document.getElementById('token-dropdown');
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '';
+            
+            for (const [symbol, token] of Object.entries(TOKENS)) {
+                const balance = state.tokenBalances[symbol] || '0';
+                const formatted = parseFloat(balance).toFixed(4);
+                const isSelected = symbol === state.selectedToken;
+                
+                const item = document.createElement('div');
+                item.className = `flex items-center justify-between p-3 hover:bg-white/10 cursor-pointer transition ${isSelected ? 'bg-ether-green/10' : ''}`;
+                item.onclick = () => selectToken(symbol);
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <img src="${token.icon}" class="w-8 h-8 rounded-full bg-white p-0.5" alt="${token.symbol}">
+                        <div>
+                            <div class="font-bold text-white">${token.symbol}</div>
+                            <div class="text-xs text-gray-400">${token.name}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-mono text-white">${formatted}</div>
+                        ${!token.isNative ? `<div class="text-[10px] text-gray-500 truncate max-w-[80px]">${token.address.substring(0, 8)}...</div>` : ''}
+                    </div>
+                `;
+                dropdown.appendChild(item);
+            }
+        }
+
+        // Add to MetaMask wallet
+        async function addTokenToWallet(symbol) {
+            const token = TOKENS[symbol];
+            if (!token || token.isNative) {
+                log('Cannot add native token to wallet', 'warning');
+                return;
+            }
+
+            if (typeof window.ethereum === 'undefined') {
+                log('MetaMask not detected', 'error');
+                return;
+            }
+
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_watchAsset',
+                    params: {
+                        type: 'ERC20',
+                        options: {
+                            address: token.address,
+                            symbol: token.symbol,
+                            decimals: token.decimals,
+                            image: token.icon
+                        }
+                    }
+                });
+                log(`${token.symbol} added to wallet`, 'success');
+            } catch (error) {
+                log(`Failed to add token: ${error.message}`, 'error');
+            }
+        }
+
         function setChain(chain) {
             state.chain = chain;
             const btnEth = document.getElementById('chain-etherlink');
             const btnJstz = document.getElementById('chain-jstz');
-            const assetSymbol = document.getElementById('asset-symbol');
-            const assetIcon = document.getElementById('asset-icon');
 
             // Reset styles
             const activeClass = "border-ether-green bg-ether-green/10 text-white";
@@ -609,18 +824,15 @@
             if (chain === 'etherlink') {
                 btnEth.className = `relative py-3 rounded-lg transition-all group overflow-hidden ${activeClass}`;
                 btnJstz.className = `relative py-3 rounded-lg transition-all group ${inactiveClass}`;
-                
-                assetSymbol.innerText = "WETH";
-                assetIcon.src = "https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026";
                 log("Direction: Etherlink -> Jstz selected.", 'info');
             } else {
                 btnJstz.className = `relative py-3 rounded-lg transition-all group overflow-hidden border-jstz-accent bg-jstz-accent/10 text-white`;
                 btnEth.className = `relative py-3 rounded-lg transition-all group ${inactiveClass}`;
-                
-                assetSymbol.innerText = "XTZ";
-                assetIcon.src = "https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026";
                 log("Direction: Jstz -> Etherlink selected.", 'info');
             }
+            
+            // Update balance display for selected token
+            updateBalanceDisplay();
         }
 
         function setTab(mode) {
@@ -989,31 +1201,60 @@
         // Init
         generateNewSecret();
         updateProgress(1);
+        renderTokenDropdown(); // Initialize token dropdown
         log("Atomic Swap ready. Connect wallets to begin.", 'system');
         log(`Etherlink Contract: ${CONFIG.etherlink.contractAddress}`, 'info');
         log(`Jstz Function: ${CONFIG.jstz.functionAddress}`, 'info');
+        log(`Tokens available: ${Object.keys(TOKENS).join(', ')}`, 'info');
         
+        // Close token dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('token-dropdown');
+            const assetSelector = e.target.closest('[onclick="toggleTokenSelector()"]');
+            if (!assetSelector && !e.target.closest('#token-dropdown')) {
+                toggleTokenSelector(false);
+            }
+        });
+
         // Wallet Events - Real connections
         document.getElementById('wallet-etherlink').addEventListener('click', async (e) => {
             const btn = e.currentTarget;
-            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...`;
+            const textEl = document.getElementById('wallet-etherlink-text');
+            const balanceEl = document.getElementById('wallet-balance');
+            
+            textEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Connecting...`;
             
             const connected = await connectEtherlink();
             
             if (connected) {
                 const shortAddr = `${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`;
-                btn.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> ${shortAddr}`;
+                textEl.innerText = shortAddr;
                 btn.classList.add('border-ether-green', 'text-ether-green', 'bg-ether-green/10');
+                
+                // Fetch and display balances
+                await fetchAllBalances();
+                
+                // Show balance next to address
+                if (state.tokenBalances['XTZ']) {
+                    const xtzBalance = parseFloat(state.tokenBalances['XTZ']).toFixed(2);
+                    balanceEl.innerText = `${xtzBalance} XTZ`;
+                    balanceEl.classList.remove('hidden');
+                }
+                
+                // Update token dropdown with balances
+                renderTokenDropdown();
             } else {
-                btn.innerHTML = `<i class="fa-brands fa-ethereum text-ether-green"></i> Connect Etherlink`;
+                textEl.innerText = 'Connect Etherlink';
             }
         });
 
         document.getElementById('wallet-jstz').addEventListener('click', async (e) => {
             const btn = e.currentTarget;
+            const textEl = document.getElementById('wallet-jstz-text');
+            
             // Jstz connection (simulated - real implementation needs jstz CLI auth)
             state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
-            btn.innerHTML = `<i class="fa-solid fa-bolt text-jstz-accent"></i> tz1...FTP`;
+            textEl.innerText = 'tz1...FTP';
             btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
             log(`Jstz identity connected: ${state.jstzAddress}`, 'success');
         });
