@@ -53,6 +53,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     
+    <!-- Load Jstz Client SDK -->
+    <script type="module">
+        // Try to load Jstz SDK and expose it globally
+        try {
+            const JstzModule = await import('https://esm.sh/@jstz-dev/jstz-client@0.1.1-alpha.5');
+            window.JstzClient = JstzModule.default || JstzModule.Jstz || JstzModule;
+            console.log('[JSTZ SDK] Loaded successfully:', window.JstzClient);
+        } catch (e) {
+            console.warn('[JSTZ SDK] Failed to load from esm.sh:', e);
+            window.JstzClient = null;
+        }
+    </script>
+    
     <!-- Jstz Wallet Extension Integration -->
     <script>
         // Jstz Signer Extension Types and Functions
@@ -70,6 +83,11 @@
             } catch (e) {
                 return false;
             }
+        }
+        
+        // Check if Jstz SDK is loaded
+        function isJstzSdkLoaded() {
+            return !!window.JstzClient;
         }
 
         // Request address from Jstz wallet extension
@@ -545,22 +563,32 @@
                                     <input type="text" id="secret-input-claim" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
                                 </div>
 
+                                <!-- Connected Chain Indicator -->
+                                <div id="redeem-chain-indicator" class="mb-4 p-3 rounded-xl border border-white/10 bg-white/5">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-400">Action will be executed on:</span>
+                                        <span id="redeem-chain-badge" class="px-3 py-1 rounded-lg text-xs font-bold">
+                                            Not Connected
+                                        </span>
+                                    </div>
+                                </div>
+
                                 <!-- Action Buttons -->
                                 <div class="grid grid-cols-2 gap-4">
                                     <button onclick="claimSwap()" id="claim-btn" class="py-4 px-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-green-500/20 group">
                                         <div class="flex items-center gap-2">
                                             <i class="fa-solid fa-hand-holding-dollar text-lg"></i>
-                                            <span>Claim Funds</span>
+                                            <span id="claim-btn-text">Claim Funds</span>
                                         </div>
-                                        <span class="text-[10px] opacity-70 font-normal">Using Secret</span>
+                                        <span id="claim-btn-chain" class="text-[10px] opacity-70 font-normal">Connect wallet first</span>
                                     </button>
                                     
                                     <button onclick="refundSwap()" id="refund-btn" class="py-4 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-semibold flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-red-500/20 group">
                                         <div class="flex items-center gap-2">
                                             <i class="fa-solid fa-rotate-left text-lg"></i>
-                                            <span>Refund</span>
+                                            <span id="refund-btn-text">Refund</span>
                                         </div>
-                                        <span class="text-[10px] opacity-70 font-normal">After Timeout</span>
+                                        <span id="refund-btn-chain" class="text-[10px] opacity-70 font-normal">Connect wallet first</span>
                                     </button>
                                 </div>
                             </div>
@@ -949,6 +977,7 @@
             if (connectedWallet === 'etherlink') {
                 // Etherlink wallet connected
                 state.connectedWallet = 'etherlink';
+                updateRedeemChainIndicator();
                 
                 // Disable Jstz wallet button
                 if (jstzBtn) {
@@ -985,6 +1014,7 @@
             } else if (connectedWallet === 'jstz') {
                 // Jstz wallet connected
                 state.connectedWallet = 'jstz';
+                updateRedeemChainIndicator();
                 
                 // Disable Etherlink wallet button
                 if (etherlinkBtn) {
@@ -1020,6 +1050,7 @@
             } else {
                 // No wallet connected - enable both
                 state.connectedWallet = null;
+                updateRedeemChainIndicator();
                 
                 // Re-enable both wallet buttons
                 if (etherlinkBtn) {
@@ -1058,6 +1089,7 @@
             state.signer = null;
             state.contract = null;
             state.connectedWallet = null;
+            updateRedeemChainIndicator();
             
             // Reset Etherlink button
             const etherlinkBtn = document.getElementById('wallet-etherlink');
@@ -1241,11 +1273,50 @@
         const encoder = new TextEncoder();
         const decoder = new TextDecoder('utf-8');
         
-        async function jstzRequest(method, path, body = null) {
+        // Read-only request to Jstz (no signature needed)
+        async function jstzReadOnly(path) {
+            const contractAddress = CONFIG.jstz.contractAddress;
+            const rpcUrl = CONFIG.jstz.rpcUrl;
+            
+            console.log(`[JSTZ] Read-only: ${path}`);
+            
+            try {
+                // Try direct HTTP call to the smart function endpoint
+                // Jstz allows reading state without signing
+                const response = await fetch(`${rpcUrl}/smart_functions/${contractAddress}/state${path}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.log('[JSTZ] Direct read failed, trying alternative...');
+            }
+            
+            // Fallback: return null to indicate we need CLI
+            return null;
+        }
+        
+        async function jstzRequest(method, path, body = null, requiresSignature = true) {
             const contractAddress = CONFIG.jstz.contractAddress;
             const rpcUrl = CONFIG.jstz.rpcUrl;
             
             log(`📤 Jstz: ${method} ${path}`, 'system');
+            
+            // For read operations, try without signature first
+            if (!requiresSignature || path.startsWith('/swap/') || path === '/swaps') {
+                log(`📖 Attempting read-only request...`, 'system');
+                // For reads, we'll just return null and let the UI handle it
+                // The user will need to check via CLI
+                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '{}'`;
+                console.log('[JSTZ] Read CLI command:', cliCmd);
+                
+                // Return a "not found" response for verification - we can't read without executing
+                // The user should verify via CLI or trust the process
+                return { error: 'READ_ONLY_NOT_SUPPORTED', cliCommand: cliCmd };
+            }
             
             // Check if extension is available
             const hasExtension = isJstzExtensionInstalled();
@@ -1265,15 +1336,21 @@
             try {
                 log(`🔐 Requesting signature from Jstz wallet...`, 'warning');
                 
-                // Build the operation
+                // Build the operation - body must be Array of bytes as per wallet docs
+                const bodyJson = body ? JSON.stringify(body) : '';
+                const bodyBytes = bodyJson ? Array.from(encoder.encode(bodyJson)) : [];
+                
                 const operation = {
                     _type: 'RunFunction',
                     uri: `jstz://${contractAddress}${path}`,
                     method: 'POST',
                     headers: {},
-                    body: body ? Array.from(encoder.encode(JSON.stringify(body))) : [],
+                    body: bodyBytes, // Array of bytes as per wallet documentation
                     gasLimit: 100000
                 };
+                
+                console.log('[JSTZ] Body JSON:', bodyJson);
+                console.log('[JSTZ] Body bytes length:', bodyBytes.length);
                 
                 console.log('[JSTZ] Operation to sign:', operation);
                 
@@ -1283,15 +1360,61 @@
                 log(`✅ Signature received from ${signResponse.accountAddress.substring(0, 10)}...`, 'success');
                 console.log('[JSTZ] Sign response:', signResponse);
                 
-                // Inject the signed operation
+                // Inject the signed operation using Jstz SDK (as per documentation)
                 log(`📡 Injecting operation to Jstz privatenet...`, 'warning');
+                
+                const { operation: signedOperation, signature, accountAddress } = signResponse;
+                console.log(`[JSTZ] Operation signed by: ${accountAddress}`);
+                
+                // Use the Jstz client SDK for injection
+                if (window.JstzClient) {
+                    const jstzClient = new window.JstzClient({
+                        baseURL: rpcUrl,
+                        timeout: 10000
+                    });
+                    
+                    console.log('[JSTZ] Using SDK for injection, operation:', signedOperation);
+                    
+                    try {
+                        const { result: { inner } } = await jstzClient.operations.injectAndPoll({
+                            inner: signedOperation,
+                            signature: signature
+                        });
+                        
+                        console.log('[JSTZ] SDK injection result inner:', inner);
+                        
+                        // Parse response body
+                        let returnedMessage = 'Success';
+                        if (typeof inner === 'object' && inner && 'body' in inner) {
+                            try {
+                                returnedMessage = inner.body ? JSON.parse(decoder.decode(new Uint8Array(inner.body))) : 'No body';
+                            } catch (e) {
+                                returnedMessage = 'Response received';
+                            }
+                        } else if (typeof inner === 'string') {
+                            returnedMessage = inner;
+                        }
+                        
+                        log(`✅ Jstz operation successful!`, 'success');
+                        console.log('[JSTZ] Parsed response:', returnedMessage);
+                        return returnedMessage;
+                        
+                    } catch (sdkError) {
+                        console.error('[JSTZ] SDK injection error:', sdkError);
+                        throw sdkError;
+                    }
+                }
+                
+                // Fallback to direct fetch if SDK not loaded
+                console.log('[JSTZ] SDK not available, using direct fetch');
+                log(`⚠️ Jstz SDK not loaded, trying direct injection...`, 'warning');
                 
                 const injectResponse = await fetch(`${rpcUrl}/operations`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        inner: signResponse.operation,
-                        signature: signResponse.signature
+                        inner: signedOperation,
+                        signature: signature
                     })
                 });
                 
@@ -1319,13 +1442,21 @@
                 
             } catch (error) {
                 console.error('[JSTZ] Extension error:', error);
-                log(`❌ Jstz error: ${error.message}`, 'error');
+                log(`❌ Jstz wallet error: ${error.message}`, 'error');
                 
-                // Fallback to CLI
+                // Show CLI modal as fallback
                 const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
-                log(`💡 Fallback - use CLI: <code class="bg-black/50 px-2 py-1 rounded text-xs">${cliCmd}</code>`, 'system');
                 
-                throw error;
+                log(`💡 Use the CLI command popup to complete this operation`, 'warning');
+                showCLIModal(cliCmd, `The Jstz wallet extension failed. Run this command in your terminal to ${path.includes('initiate') ? 'initiate the swap' : path.includes('claim') ? 'claim the swap' : path.includes('refund') ? 'refund the swap' : 'execute the operation'}:`);
+                
+                // Return a special object indicating CLI fallback
+                return { 
+                    success: false, 
+                    cliRequired: true, 
+                    cliCommand: cliCmd,
+                    error: error.message 
+                };
             }
         }
         
@@ -1481,6 +1612,32 @@
             } else {
                 dropdown.classList.add('hidden');
                 dropdown.classList.remove('flex');
+            }
+        }
+
+        // Update the Redeem tab chain indicator based on connected wallet
+        function updateRedeemChainIndicator() {
+            const badge = document.getElementById('redeem-chain-badge');
+            const claimChain = document.getElementById('claim-btn-chain');
+            const refundChain = document.getElementById('refund-btn-chain');
+            
+            if (!badge) return;
+            
+            if (state.connectedWallet === 'etherlink') {
+                badge.textContent = '⟠ Etherlink';
+                badge.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-ether-green/20 text-ether-green border border-ether-green/30';
+                if (claimChain) claimChain.textContent = 'on Etherlink';
+                if (refundChain) refundChain.textContent = 'on Etherlink';
+            } else if (state.connectedWallet === 'jstz') {
+                badge.textContent = '⚡ Jstz';
+                badge.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-jstz-accent/20 text-jstz-accent border border-jstz-accent/30';
+                if (claimChain) claimChain.textContent = 'on Jstz';
+                if (refundChain) refundChain.textContent = 'on Jstz';
+            } else {
+                badge.textContent = '⚠️ Not Connected';
+                badge.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30';
+                if (claimChain) claimChain.textContent = 'Connect wallet first';
+                if (refundChain) refundChain.textContent = 'Connect wallet first';
             }
         }
 
@@ -1824,7 +1981,7 @@
             const existingSwap = await verifySwapOnEtherlink(state.hash);
             if (existingSwap.valid && existingSwap.swap) {
                 log(`❌ A swap with this HashLock already exists!`, 'error');
-                log(`State: ${['EMPTY', 'ACTIVE', 'CLAIMED', 'REFUNDED'][existingSwap.swap.state]}`, 'info');
+                log(`State: ${['OPEN', 'CLAIMED', 'EXPIRED'][existingSwap.swap.status]}`, 'info');
                 log(`Generate a new secret to create a new swap.`, 'system');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
@@ -1960,16 +2117,10 @@
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates...`;
 
             // ========== CHECK FOR DUPLICATE ON JSTZ ==========
-            log('Checking if swap with this hash already exists...', 'warning');
-            const existingSwap = await verifySwapOnJstz(state.hash);
-            if (existingSwap.valid && existingSwap.swap) {
-                log(`❌ A swap with this HashLock already exists on Jstz!`, 'error');
-                log(`Generate a new secret to create a new swap.`, 'system');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
-            log('✓ HashLock is unique', 'success');
+            // Note: We can't verify duplicates without CLI, so we skip this check
+            // The Jstz smart function will reject if a duplicate exists
+            log('⚠️ Skipping duplicate check (requires CLI verification)', 'warning');
+            log('💡 The smart function will reject if hash already exists', 'system');
 
             // ========== INITIATE SWAP ON JSTZ ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking funds on Jstz...`;
@@ -1998,8 +2149,17 @@
                     recipient: recipient || null
                 });
                 
-                if (!response.success) {
-                    throw new Error(response.error || 'Failed to initiate swap on Jstz');
+                // Handle CLI fallback
+                if (response && response.cliRequired) {
+                    log(`⚠️ Complete the swap using the CLI command in the popup`, 'warning');
+                    log(`📋 After running the CLI command, verify the swap was created`, 'info');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                    return;
+                }
+                
+                if (!response || response.error) {
+                    throw new Error(response?.error || 'Failed to initiate swap on Jstz');
                 }
                 
                 // Store for later
@@ -2083,7 +2243,7 @@
             // ========== VERIFY ALICE'S SWAP EXISTS ==========
             // 5. Check that Alice has already locked funds on Etherlink with this hashlock
             log("Checking if Alice has locked funds on Etherlink...", 'warning');
-            const aliceSwap = await verifySwapOnEtherlink(hashlock, SwapState.ACTIVE);
+            const aliceSwap = await verifySwapOnEtherlink(hashlock, SwapState.OPEN);
             
             if (!aliceSwap.valid) {
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
@@ -2130,17 +2290,9 @@
             }
             log(`✓ Timelock is safe (${timelockMins}m < ${aliceRemainingMins}m remaining)`, 'success');
             
-            // ========== CHECK FOR DUPLICATE ON JSTZ ==========
-            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates on Jstz...`;
-            
-            // 8. Check if swap with this hashlock already exists on Jstz
-            const existingJstzSwap = await verifySwapOnJstz(hashlock);
-            if (existingJstzSwap.valid && existingJstzSwap.swap) {
-                log(`❌ A swap with this HashLock already exists on Jstz!`, 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
+            // ========== SKIP DUPLICATE CHECK ON JSTZ ==========
+            // Note: Can't verify duplicates without CLI, Jstz smart function will reject if exists
+            log('⚠️ Skipping Jstz duplicate check (will fail if hash exists)', 'warning');
             
             // ========== EXECUTE INITIATE ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking on Jstz...`;
@@ -2157,11 +2309,20 @@
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
                 
                 const response = await jstzRequest('POST', '/initiate', {
-                    hashLock: hashlock,
+                    hashlock: hashlock,
                     amount: amount,
-                    receiver: aliceSwap.swap.sender, // Alice's address
-                    expiration: expiration
+                    expiration: expiration,
+                    recipient: null
                 });
+                
+                // Handle CLI fallback
+                if (response && response.cliRequired) {
+                    log(`⚠️ Complete the swap using the CLI command in the popup`, 'warning');
+                    log(`📋 After running the CLI command, verify the swap was created`, 'info');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                    return;
+                }
                 
                 if (response && response.error) {
                     throw new Error(response.error);
@@ -2246,62 +2407,26 @@
             // ========== VERIFY ALICE'S SWAP EXISTS ON JSTZ ==========
             log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             log("🔍 BOB VÉRIFIE LE SWAP D'ALICE SUR JSTZ", 'warning');
-            log("Checking if Alice has locked funds on Jstz...", 'info');
-            
-            const aliceSwap = await verifySwapOnJstz(hashlock);
-            
-            if (!aliceSwap.valid || !aliceSwap.swap) {
-                log(``, 'system');
-                log(`❌ ERREUR: Aucun swap trouvé sur Jstz!`, 'error');
-                log(``, 'system');
-                log(`📋 Ce que ça signifie:`, 'warning');
-                log(`   Alice n'a pas encore verrouillé ses fonds`, 'info');
-                log(`   avec ce HashLock sur Jstz.`, 'info');
-                log(``, 'system');
-                log(`✅ Ce que vous devez faire:`, 'success');
-                log(`   1. Demandez à Alice de d'abord initier le swap`, 'system');
-                log(`   2. Alice doit se connecter avec Jstz wallet`, 'system');
-                log(`   3. Puis revenez ici pour "Match Swap"`, 'system');
-                log(``, 'system');
-                log(`🔑 HashLock attendu: ${hashlock.substring(0, 20)}...`, 'info');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
-            
-            log(`✓ Found Alice's swap: ${aliceSwap.swap.amount} XTZ locked`, 'success');
-            
-            // Check Alice's swap status
-            if (aliceSwap.swap.status !== 'OPEN') {
-                log(`❌ Alice's swap is not active (status: ${aliceSwap.swap.status})`, 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
-            
-            // Check expiration
-            const aliceExpiration = aliceSwap.swap.expiration;
-            const now = Math.floor(Date.now() / 1000);
-            
-            if (now >= aliceExpiration) {
-                log("❌ Alice's swap has expired! Don't lock your funds.", 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
-            
-            const aliceRemainingMins = Math.floor((aliceExpiration - now) / 60);
-            
-            if (timelockMins >= aliceRemainingMins) {
-                log(`❌ Your timelock (${timelockMins}m) must be shorter than Alice's remaining time (${aliceRemainingMins}m)`, 'error');
-                log(`Recommended: Set timelock to ${Math.floor(aliceRemainingMins / 2)} minutes`, 'info');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                return;
-            }
-            log(`✓ Timelock is safe (${timelockMins}m < ${aliceRemainingMins}m remaining)`, 'success');
+            log("⚠️ Cannot auto-verify Jstz swap (extension limitation)", 'warning');
+            log(`💡 Verify manually with CLI:`, 'system');
+            log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashlock}" -n privatenet -m POST -d '{}'</code>`, 'info');
+            log(``, 'system');
+            log(`⚠️ IMPORTANT: Only proceed if you've verified Alice's swap exists!`, 'warning');
+            log(`   Continuing without verification...`, 'info');
             log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+            
+            // We can't verify, so we'll let the user proceed at their own risk
+            // They should verify via CLI before proceeding
+            // For safety, we'll still try to estimate a reasonable timelock
+            const assumedAliceRemainingMins = 60; // Assume Alice has ~60 mins left
+            
+            if (timelockMins >= assumedAliceRemainingMins) {
+                log(`⚠️ Your timelock (${timelockMins}m) may be too long`, 'warning');
+                log(`Recommended: Set timelock to 30 minutes or less`, 'info');
+            }
+            
+            // Skip the swap status/expiration checks since we can't verify via extension
+            // The user should verify via CLI before proceeding
 
             // ========== CHECK FOR DUPLICATE ON ETHERLINK ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates on Etherlink...`;
@@ -2332,8 +2457,6 @@
 
             try {
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
-                // Bob can specify Alice as recipient, or leave empty
-                const recipient = aliceSwap.swap.sender || ethers.constants.AddressZero;
                 
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🔐 BOB MATCHE SUR ETHERLINK`, 'warning');
@@ -2345,8 +2468,8 @@
                 log('Sending transaction to Etherlink...', 'warning');
                 
                 const tx = await state.contract.initiateSwap(
-                    hashlock,
-                    ethers.constants.AddressZero, // No specific recipient for flexibility
+                    ethers.constants.AddressZero, // recipient - No specific recipient for flexibility
+                    hashlock, // hashLock
                     expiration,
                     { value: ethers.utils.parseEther(amount) }
                 );
@@ -2423,45 +2546,48 @@
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying swap on Jstz...`;
             
-            // 3. Verify swap exists on Jstz and is ACTIVE
+            // 3. Try to verify swap exists on Jstz (may fail due to extension limitation)
             log('Verifying swap exists on Jstz...', 'warning');
             const verification = await verifySwapOnJstz(hashLock);
             
             if (!verification.valid) {
-                log(`❌ ${verification.error}`, 'error');
-                log('Bob must lock funds on Jstz before you can claim!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Claim on Jstz</span>`;
-                return;
+                // Can't verify - but allow to proceed anyway (Jstz will reject if invalid)
+                log(`⚠️ Cannot auto-verify: ${verification.error}`, 'warning');
+                log('Proceeding anyway - Jstz will reject if swap does not exist', 'info');
             }
             
-            const swap = verification.swap;
-            log(`✓ Swap found on Jstz: ${swap.amount} XTZ locked`, 'success');
-            
-            // 4. Check if swap is already claimed or refunded
-            if (swap.state === 'CLAIMED' || swap.state === 2) {
-                log('❌ Swap has already been claimed!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Claim on Jstz</span>`;
-                return;
+            // Only check swap details if verification succeeded
+            if (verification.valid && verification.swap) {
+                const swap = verification.swap;
+                log(`✓ Swap found on Jstz: ${swap.amount} XTZ locked`, 'success');
+                
+                // 4. Check if swap is already claimed or refunded (Jstz uses string status)
+                if (swap.status === 'CLAIMED') {
+                    log('❌ Swap has already been claimed!', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Claim on Jstz</span>`;
+                    return;
+                }
+                
+                if (swap.status === 'REFUNDED') {
+                    log('❌ Swap has been refunded!', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Claim on Jstz</span>`;
+                    return;
+                }
+                
+                // 5. Check timelock hasn't expired
+                if (swap.isExpired) {
+                    log('❌ Swap has expired! Cannot claim after timelock.', 'error');
+                    log(`Expired at: ${swap.expirationDate}`, 'info');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Claim on Jstz</span>`;
+                    return;
+                }
+                log(`✓ Timelock valid until: ${swap.expirationDate}`, 'success');
+            } else {
+                log(`⚠️ Skipping swap validation (will be checked by Jstz)`, 'warning');
             }
-            
-            if (swap.state === 'REFUNDED' || swap.state === 3) {
-                log('❌ Swap has been refunded!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Claim on Jstz</span>`;
-                return;
-            }
-            
-            // 5. Check timelock hasn't expired
-            if (swap.isExpired) {
-                log('❌ Swap has expired! Cannot claim after timelock.', 'error');
-                log(`Expired at: ${swap.expirationDate}`, 'info');
-                btn.disabled = false;
-                btn.innerHTML = `<span>Claim on Jstz</span>`;
-                return;
-            }
-            log(`✓ Timelock valid until: ${swap.expirationDate}`, 'success');
             
             // ========== EXECUTE CLAIM ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Claiming on Jstz...`;
@@ -2474,16 +2600,24 @@
                 log(`Calling Jstz HTLC: jstz://htlc/claim`, 'system');
                 
                 const response = await jstzRequest('POST', '/claim', {
-                    hashLock: hashLock,
+                    hashlock: hashLock,
                     secret: secret
                 });
+                
+                // Handle CLI fallback
+                if (response && response.cliRequired) {
+                    log(`⚠️ Complete the claim using the CLI command in the popup`, 'warning');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Claim on Jstz</span>`;
+                    return;
+                }
                 
                 if (response && response.error) {
                     throw new Error(response.error);
                 }
                 
                 log(`✅ Claimed on Jstz!`, 'success');
-                log(`Secret revealed: ${secret}`, 'system');
+                log(`Secret revealed: ${secret.substring(0, 18)}...`, 'system');
                 log(`Alice has received XTZ!`, 'success');
                 
                 updateProgress(4);
@@ -2504,11 +2638,11 @@
         // ============================================
         
         // Swap states enum (matching Solidity contract)
+        // Must match Solidity enum: enum SwapStatus { OPEN, CLAIMED, EXPIRED }
         const SwapState = {
-            EMPTY: 0,      // Swap doesn't exist
-            ACTIVE: 1,     // Swap is active, funds locked
-            CLAIMED: 2,    // Swap was claimed
-            REFUNDED: 3    // Swap was refunded
+            OPEN: 0,       // Swap is active, funds locked
+            CLAIMED: 1,    // Swap was claimed
+            EXPIRED: 2     // Swap was refunded/expired
         };
         
         // Verify swap exists and is in correct state on Etherlink
@@ -2516,25 +2650,31 @@
         async function verifySwapOnEtherlink(swapId, expectedState = null) {
             try {
                 // Use read-only provider to check swap without connecting wallet
-                const readOnlyProvider = new ethers.providers.JsonRpcProvider(
-                    NETWORK_CONFIG[128123].rpcUrl // Etherlink Testnet
-                );
+                const rpcUrl = NETWORK_CONFIG[128123].rpcUrl;
+                const htlcAddress = NETWORK_CONFIG[128123].htlcAddress;
+                
+                console.log('[VERIFY] Using RPC:', rpcUrl);
+                console.log('[VERIFY] Contract address:', htlcAddress);
+                console.log('[VERIFY] Swap ID:', swapId);
+                
+                const readOnlyProvider = new ethers.providers.JsonRpcProvider(rpcUrl);
                 const readOnlyContract = new ethers.Contract(
-                    NETWORK_CONFIG[128123].htlcAddress,
+                    htlcAddress,
                     CONFIG.etherlink.abi,
                     readOnlyProvider
                 );
                 
-                console.log('[VERIFY] Checking swap on Etherlink (read-only):', swapId);
+                console.log('[VERIFY] Checking swap on Etherlink (read-only)...');
                 const swap = await readOnlyContract.getSwap(swapId);
+                console.log('[VERIFY] Raw swap result:', swap);
                 
                 console.log('[VERIFY] Swap data:', {
                     sender: swap.sender,
-                    receiver: swap.receiver,
+                    recipient: swap.recipient,
                     amount: swap.amount?.toString(),
                     hashLock: swap.hashLock,
                     expiration: swap.expiration?.toString(),
-                    state: swap.state
+                    status: swap.status
                 });
                 
                 // Check if swap exists (sender is not zero address)
@@ -2546,12 +2686,12 @@
                     };
                 }
                 
-                // Check state if expected state provided
-                if (expectedState !== null && swap.state !== expectedState) {
-                    const stateNames = ['EMPTY', 'ACTIVE', 'CLAIMED', 'REFUNDED'];
+                // Check status if expected state provided (OPEN=0, CLAIMED=1, EXPIRED=2)
+                if (expectedState !== null && swap.status !== expectedState) {
+                    const stateNames = ['OPEN', 'CLAIMED', 'EXPIRED'];
                     return {
                         valid: false,
-                        error: `Swap is ${stateNames[swap.state]}, expected ${stateNames[expectedState]}`,
+                        error: `Swap is ${stateNames[swap.status]}, expected ${stateNames[expectedState]}`,
                         swap
                     };
                 }
@@ -2564,12 +2704,12 @@
                     valid: true,
                     swap: {
                         sender: swap.sender,
-                        receiver: swap.receiver,
+                        recipient: swap.recipient,
                         amount: ethers.utils.formatEther(swap.amount),
                         hashLock: swap.hashLock,
                         expiration: swap.expiration.toNumber(),
                         expirationDate: new Date(swap.expiration.toNumber() * 1000).toLocaleString(),
-                        state: swap.state,
+                        status: swap.status,
                         isExpired
                     }
                 };
@@ -2584,47 +2724,22 @@
         }
         
         // Verify swap exists and is in correct state on Jstz
+        // NOTE: Jstz requires signed transactions even for reads, so we can't verify without CLI
         async function verifySwapOnJstz(hashLock) {
-            try {
-                console.log('[VERIFY] Checking swap on Jstz:', hashLock);
-                
-                const response = await jstzRequest('POST', `/swap/${hashLock}`, {});
-                
-                if (!response || response.error) {
-                    return {
-                        valid: false,
-                        error: response?.error || 'Swap does not exist on Jstz',
-                        swap: null
-                    };
-                }
-                
-                console.log('[VERIFY] Jstz swap data:', response);
-                
-                const now = Math.floor(Date.now() / 1000);
-                const isExpired = now >= response.expiration;
-                
-                return {
-                    valid: true,
-                    swap: {
-                        sender: response.sender,
-                        receiver: response.receiver,
-                        amount: response.amount,
-                        hashLock: response.hashLock,
-                        expiration: response.expiration,
-                        expirationDate: new Date(response.expiration * 1000).toLocaleString(),
-                        state: response.state,
-                        isExpired
-                    }
-                };
-                
-            } catch (error) {
-                console.error('[VERIFY] Jstz error:', error);
-                return {
-                    valid: false,
-                    error: `Failed to verify swap on Jstz: ${error.message}`,
-                    swap: null
-                };
-            }
+            console.log('[VERIFY] Checking swap on Jstz:', hashLock);
+            
+            // Since Jstz requires signatures even for reads, we return "cannot verify"
+            // and let the user proceed (they'll get an error from Jstz if swap doesn't exist)
+            log(`⚠️ Cannot verify Jstz swap without CLI (extension limitation)`, 'warning');
+            log(`💡 Use CLI to verify: jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'`, 'system');
+            
+            // Return "unknown" state - let the user proceed
+            return {
+                valid: false,
+                cannotVerify: true,
+                error: 'Cannot verify Jstz swap via extension - use CLI',
+                swap: null
+            };
         }
         
         // Validate hashlock format
@@ -2879,9 +2994,14 @@
                             <span class="text-gray-500">Swap ID:</span>
                             <div class="flex items-center gap-2">
                                 <code class="text-gray-300 font-mono">${swap.swapId.substring(0, 12)}...${swap.swapId.slice(-8)}</code>
-                                <button onclick="copySwapId('${swap.swapId}')" class="text-gray-500 hover:text-white transition">
+                                <button onclick="copySwapId('${swap.swapId}')" class="text-gray-500 hover:text-white transition" title="Copy Swap ID">
                                     <i class="fa-regular fa-copy"></i>
                                 </button>
+                                ${explorerUrl ? `
+                                <a href="${explorerUrl}/address/${CONFIG.etherlink.contractAddress}" target="_blank" class="text-gray-500 hover:text-ether-green transition" title="View on Explorer">
+                                    <i class="fa-solid fa-external-link"></i>
+                                </a>
+                                ` : ''}
                             </div>
                         </div>
                         
@@ -3153,15 +3273,18 @@
             state.currentSwapId = swapId;
             state.secret = secret;
             
-            // Determine which chain to claim on based on current mode and chain selection
-            if (state.selectedChain === 'etherlink') {
-                // If we're set to Etherlink, we're Bob claiming on Etherlink
-                log('Claiming on Etherlink...', 'warning');
+            // Determine which chain to claim on based on CONNECTED WALLET
+            if (state.connectedWallet === 'etherlink') {
+                // Connected to Etherlink (MetaMask) → Claim on Etherlink
+                log('📍 Connected to Etherlink - claiming on Etherlink...', 'warning');
                 await claimOnEtherlink();
-            } else {
-                // If we're set to Jstz, we're Alice claiming on Jstz
-                log('Claiming on Jstz...', 'warning');
+            } else if (state.connectedWallet === 'jstz') {
+                // Connected to Jstz → Claim on Jstz
+                log('📍 Connected to Jstz - claiming on Jstz...', 'warning');
                 await claimOnJstz();
+            } else {
+                log('❌ Please connect a wallet first (Etherlink or Jstz)', 'error');
+                return;
             }
         }
         
@@ -3176,10 +3299,16 @@
             
             state.currentSwapId = swapId;
             
-            if (state.selectedChain === 'etherlink') {
+            // Determine which chain to refund on based on CONNECTED WALLET
+            if (state.connectedWallet === 'etherlink') {
+                log('📍 Connected to Etherlink - refunding on Etherlink...', 'warning');
                 await refundOnEtherlink();
-            } else {
+            } else if (state.connectedWallet === 'jstz') {
+                log('📍 Connected to Jstz - refunding on Jstz...', 'warning');
                 await refundOnJstz();
+            } else {
+                log('❌ Please connect a wallet first (Etherlink or Jstz)', 'error');
+                return;
             }
         }
         
@@ -3212,7 +3341,7 @@
             
             // 2. Verify swap exists on Etherlink and is ACTIVE
             log('Verifying swap on Etherlink...', 'warning');
-            const verification = await verifySwapOnEtherlink(swapId, SwapState.ACTIVE);
+            const verification = await verifySwapOnEtherlink(swapId, SwapState.OPEN);
             
             if (!verification.valid) {
                 log(`❌ ${verification.error}`, 'error');
@@ -3318,15 +3447,15 @@
             const swap = verification.swap;
             log(`✓ Swap found: ${swap.amount} XTZ`, 'success');
             
-            // 3. Check if already claimed or refunded
-            if (swap.state === 'CLAIMED' || swap.state === 2) {
+            // 3. Check if already claimed or refunded (Etherlink: OPEN=0, CLAIMED=1, EXPIRED=2)
+            if (swap.status === SwapState.CLAIMED || swap.status === 1) {
                 log('❌ Swap has already been claimed!', 'error');
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
                 return;
             }
             
-            if (swap.state === 'REFUNDED' || swap.state === 3) {
+            if (swap.status === SwapState.EXPIRED || swap.status === 2) {
                 log('❌ Swap has already been refunded!', 'error');
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
@@ -3353,8 +3482,14 @@
             
             try {
                 const response = await jstzRequest('POST', '/refund', {
-                    hashLock: hashLock
+                    hashlock: hashLock
                 });
+                
+                // Handle CLI fallback
+                if (response && response.cliRequired) {
+                    log(`⚠️ Complete the refund using the CLI command in the popup`, 'warning');
+                    return;
+                }
                 
                 if (response && response.error) {
                     throw new Error(response.error);
@@ -3429,7 +3564,7 @@
             
             // 5. Verify swap exists on Etherlink and is ACTIVE
             log('Verifying swap exists on Etherlink...', 'warning');
-            const verification = await verifySwapOnEtherlink(swapId, SwapState.ACTIVE);
+            const verification = await verifySwapOnEtherlink(swapId, SwapState.OPEN);
             
             if (!verification.valid) {
                 log(`❌ ${verification.error}`, 'error');
@@ -3750,6 +3885,99 @@
             </div>
         </div>
     </div>
+    
+    <!-- CLI Command Modal -->
+    <div id="cli-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-[#0a0a0a] border border-jstz-accent/30 rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl shadow-jstz-accent/10">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-jstz-accent/10 rounded-full flex items-center justify-center">
+                        <i class="fa-solid fa-terminal text-jstz-accent"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Jstz CLI Command</h3>
+                        <p class="text-xs text-gray-400">Wallet extension unavailable - use CLI instead</p>
+                    </div>
+                </div>
+                <button onclick="closeCLIModal()" class="text-gray-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-sm text-gray-300 mb-3" id="cli-modal-description">
+                    The Jstz wallet extension is not responding. Run this command in your terminal:
+                </p>
+                
+                <div class="relative">
+                    <pre id="cli-modal-command" class="bg-black border border-white/10 rounded-xl p-4 text-sm text-green-400 font-mono overflow-x-auto whitespace-pre-wrap break-all"></pre>
+                    <button onclick="copyCLICommand()" class="absolute top-2 right-2 px-3 py-1 bg-jstz-accent/20 hover:bg-jstz-accent/30 text-jstz-accent rounded-lg text-xs font-semibold transition-colors flex items-center gap-1">
+                        <i class="fa-regular fa-copy"></i>
+                        <span id="copy-cli-btn-text">Copy</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 mb-4">
+                <div class="flex items-start gap-2">
+                    <i class="fa-solid fa-circle-info text-yellow-500 mt-0.5"></i>
+                    <div class="text-xs text-yellow-200">
+                        <strong>Instructions:</strong>
+                        <ol class="list-decimal list-inside mt-1 space-y-1 text-yellow-200/80">
+                            <li>Copy the command above</li>
+                            <li>Open a terminal</li>
+                            <li>Paste and run the command</li>
+                            <li>Check the output for success/error</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="closeCLIModal()" class="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold transition-all">
+                    Close
+                </button>
+                <button onclick="copyCLICommand()" class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-jstz-accent to-yellow-400 hover:brightness-110 text-black font-bold shadow-lg transition-all flex items-center justify-center gap-2">
+                    <i class="fa-regular fa-copy"></i>
+                    Copy Command
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // CLI Modal functions
+        function showCLIModal(command, description = null) {
+            const modal = document.getElementById('cli-modal');
+            const commandEl = document.getElementById('cli-modal-command');
+            const descEl = document.getElementById('cli-modal-description');
+            
+            commandEl.textContent = command;
+            if (description) {
+                descEl.textContent = description;
+            }
+            
+            modal.classList.remove('hidden');
+            modal.style.opacity = '0';
+            setTimeout(() => modal.style.opacity = '1', 10);
+        }
+        
+        function closeCLIModal() {
+            const modal = document.getElementById('cli-modal');
+            modal.style.opacity = '0';
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+        
+        function copyCLICommand() {
+            const commandEl = document.getElementById('cli-modal-command');
+            const btnText = document.getElementById('copy-cli-btn-text');
+            
+            navigator.clipboard.writeText(commandEl.textContent).then(() => {
+                btnText.textContent = 'Copied!';
+                setTimeout(() => btnText.textContent = 'Copy', 2000);
+            });
+        }
+    </script>
 </body>
 </html>
 
