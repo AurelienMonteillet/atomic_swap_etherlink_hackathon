@@ -1140,10 +1140,14 @@
                 badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-yellow-500/50 cursor-pointer hover:border-yellow-500 transition';
                 name.className = 'text-xs text-yellow-400';
             } else {
-                // Wrong network - Red
+                // Wrong network - Red with prominent "click to switch" indicator
                 dot.className = 'w-2 h-2 rounded-full bg-red-500 animate-pulse';
-                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-red-500/50 cursor-pointer hover:border-red-500 transition';
-                name.className = 'text-xs text-red-400';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/20 border-2 border-red-500 cursor-pointer hover:bg-red-500/30 transition animate-pulse';
+                name.className = 'text-xs text-red-400 font-bold';
+                name.innerHTML = `${networkName} <span class="ml-1 text-[10px] bg-red-500 text-white px-1 rounded">⚠️ CLICK TO SWITCH</span>`;
+                
+                // Log warning message
+                log(`⚠️ Wrong network detected! Click the red badge to switch to Etherlink Testnet`, 'error');
             }
         }
         
