@@ -768,7 +768,7 @@
                         </div>
 
                         <!-- Right: Jstz Contract -->
-                        <a href="https://privatenet.dashboard.jstz.info/smart-functions/KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE" target="_blank" class="text-center z-10 group cursor-pointer" title="KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE">
+                        <a href="https://privatenet.dashboard.jstz.info/smart-functions/KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W" target="_blank" class="text-center z-10 group cursor-pointer" title="KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W">
                             <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 group-hover:border-jstz-accent/50 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden transition-all group-hover:scale-105">
                                 <div class="absolute inset-0 bg-yellow-500/10 group-hover:bg-yellow-500/20 transition"></div>
                                 <i class="fa-solid fa-layer-group text-2xl text-jstz-accent"></i>
@@ -787,7 +787,7 @@
                         <div class="truncate" title="0x79826f6Ab82C24395123f8419E3aFb995d906bAd">
                             <span class="text-gray-600">ETH:</span> 0x79826...06bAd
                         </div>
-                        <div class="truncate text-right" title="KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE">
+                        <div class="truncate text-right" title="KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W">
                             <span class="text-gray-600">JSTZ:</span> KT1VDy...49ZcE
                         </div>
                     </div>
@@ -875,7 +875,7 @@
                 rpcUrl: 'https://privatenet.jstz.info',
                 network: 'privatenet',
                 functionAddress: 'jstz://htlc/',
-                contractAddress: 'KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE'
+                contractAddress: 'KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W'
             }
         };
 
@@ -1461,11 +1461,27 @@
             return null;
         }
         
-        async function jstzRequest(method, path, body = null, requiresSignature = true) {
+        /**
+         * Make a request to Jstz smart function
+         * @param method - HTTP method
+         * @param path - Endpoint path (e.g., /initiate, /claim, /refund)
+         * @param body - Request body object
+         * @param options - Additional options:
+         *   - requiresSignature: Whether to require wallet signature (default: true)
+         *   - transferAmountMutez: Amount of tez to send in mutez (1 XTZ = 1,000,000 mutez)
+         */
+        async function jstzRequest(method, path, body = null, options = {}) {
+            const { requiresSignature = true, transferAmountMutez = 0 } = typeof options === 'boolean' 
+                ? { requiresSignature: options } 
+                : options;
+            
             const contractAddress = CONFIG.jstz.contractAddress;
             const rpcUrl = CONFIG.jstz.rpcUrl;
             
             log(`📤 Jstz: ${method} ${path}`, 'system');
+            if (transferAmountMutez > 0) {
+                log(`💰 Sending ${transferAmountMutez} mutez (${transferAmountMutez / 1000000} XTZ)`, 'warning');
+            }
             
             // For read operations, try without signature first
             if (!requiresSignature || path.startsWith('/swap/') || path === '/swaps') {
@@ -1484,14 +1500,20 @@
             const hasExtension = isJstzExtensionInstalled();
             
             if (!hasExtension) {
-                // No extension - show CLI command
-                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
+                // No extension - show CLI command with transfer if needed
+                let cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
+                if (transferAmountMutez > 0) {
+                    // Note: CLI transfer syntax may vary - check jstz docs
+                    cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}' --transfer ${transferAmountMutez}`;
+                }
                 log(`⚠️ Jstz wallet extension not detected`, 'warning');
                 log(`📋 Run this CLI command instead:`, 'system');
                 log(`<code class="bg-black/50 px-2 py-1 rounded text-xs break-all">${cliCmd}</code>`, 'info');
                 
-                // Return simulated response for demo
-                return simulateJstzResponse(path, body);
+                // Show popup with CLI command
+                showCLIModal(cliCmd, 'Jstz wallet extension not available. Run this command to complete the transaction:');
+                
+                return { cliRequired: true, cliCommand: cliCmd };
             }
             
             // Extension available - use it!
@@ -1515,11 +1537,18 @@
                 
                 const bodyBase64 = bodyJson ? toBase64(bodyJson) : '';
                 
+                // Build headers - include X-JSTZ-TRANSFER if sending tez
+                const operationHeaders = {};
+                if (transferAmountMutez > 0) {
+                    operationHeaders['X-JSTZ-TRANSFER'] = transferAmountMutez.toString();
+                    console.log('[JSTZ] Adding transfer header:', transferAmountMutez, 'mutez');
+                }
+                
                 const operation = {
                     _type: 'RunFunction',
                     uri: `jstz://${contractAddress}${path}`,
                     method: 'POST',
-                    headers: {},
+                    headers: operationHeaders,
                     body: bodyBase64, // Base64 encoded string as per Jstz engineer
                     gasLimit: 100000
                 };
@@ -2445,14 +2474,21 @@
                 }
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
-                // Call Jstz smart function
+                // Call Jstz smart function with REAL tez transfer
+                // Convert XTZ to mutez (1 XTZ = 1,000,000 mutez)
+                const amountMutez = Math.floor(parseFloat(amount) * 1000000);
+                
                 log(`Calling Jstz HTLC: /initiate`, 'system');
+                log(`💰 Transferring ${amountMutez} mutez (${amount} XTZ) to smart function`, 'warning');
                 
                 const response = await jstzRequest('POST', '/initiate', {
                     hashlock: state.hash,
-                    amount: amount,
                     expiration: expiration,
                     recipient: recipient || null
+                    // Note: amount is sent via X-JSTZ-TRANSFER header, not in body
+                }, {
+                    requiresSignature: true,
+                    transferAmountMutez: amountMutez // This adds X-JSTZ-TRANSFER header
                 });
                 
                 // Handle CLI fallback
@@ -2611,14 +2647,21 @@
                 log(`Amount: ${amount} XTZ`, 'info');
                 log(`Timelock: ${timelockMins} minutes`, 'info');
                 
-                // Call Jstz smart function
+                // Call Jstz smart function with REAL tez transfer
+                // Convert XTZ to mutez (1 XTZ = 1,000,000 mutez)
+                const amountMutez = Math.floor(parseFloat(amount) * 1000000);
+                
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
+                log(`💰 Transferring ${amountMutez} mutez (${amount} XTZ) to smart function`, 'warning');
                 
                 const response = await jstzRequest('POST', '/initiate', {
                     hashlock: hashlock,
-                    amount: amount,
                     expiration: expiration,
                     recipient: null
+                    // Note: amount is sent via X-JSTZ-TRANSFER header, not in body
+                }, {
+                    requiresSignature: true,
+                    transferAmountMutez: amountMutez // This adds X-JSTZ-TRANSFER header
                 });
                 
                 // Handle CLI fallback

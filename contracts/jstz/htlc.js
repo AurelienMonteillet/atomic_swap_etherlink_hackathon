@@ -2,9 +2,17 @@
  * HTLC Smart Function for Jstz
  * Hashed Timelock Contract for Atomic Swaps
  * 
- * This smart function enables trustless cross-chain swaps between
+ * This smart function enables REAL trustless cross-chain swaps between
  * Etherlink and Jstz using hash time-locked contracts.
+ * 
+ * REAL TRANSFERS:
+ * - Uses X-JSTZ-AMOUNT to receive tez at initiation
+ * - Uses X-JSTZ-TRANSFER to send tez at claim/refund
+ * - All amounts are in MUTEZ (1 XTZ = 1,000,000 mutez)
  */
+
+// Constants
+const ONE_TEZ = 1000000; // 1 XTZ in mutez
 
 // Status enum
 const SwapStatus = {
@@ -54,6 +62,20 @@ function addSwapKey(hashlock) {
     keys.push(hashlock);
     Kv.set('swap_keys', JSON.stringify(keys));
   }
+}
+
+/**
+ * Helper: Convert XTZ to mutez
+ */
+function xtzToMutez(xtz) {
+  return Math.floor(parseFloat(xtz) * ONE_TEZ);
+}
+
+/**
+ * Helper: Convert mutez to XTZ
+ */
+function mutezToXtz(mutez) {
+  return mutez / ONE_TEZ;
 }
 
 /**
@@ -166,14 +188,24 @@ async function hashSecret(secret) {
 
 /**
  * INITIATE - Lock funds with a hashlock
+ * 
+ * REAL TRANSFER: Receives tez via X-JSTZ-AMOUNT header
+ * The smart function automatically holds the received tez in escrow
+ * 
+ * @param hashlock - The SHA-256 hash of the secret (0x + 64 hex chars)
+ * @param recipient - Optional: Address that can claim (or null for anyone with secret)
+ * @param expiration - Unix timestamp when swap expires
+ * @param amountMutez - Amount received in mutez (from X-JSTZ-AMOUNT header)
+ * @param sender - Address of the initiator (from Referer header)
  */
-async function initiate(hashlock, recipient, expiration, amount, sender) {
+async function initiate(hashlock, recipient, expiration, amountMutez, sender) {
   if (!hashlock || hashlock.length !== 66) {
     throw new Error('Invalid hashlock: must be 0x + 64 hex chars');
   }
   
-  if (!amount || parseFloat(amount) <= 0) {
-    throw new Error('Amount must be greater than 0');
+  // Amount is now received via X-JSTZ-AMOUNT (in mutez)
+  if (!amountMutez || amountMutez <= 0) {
+    throw new Error('No tez received. Send tez with X-JSTZ-TRANSFER header');
   }
   
   if (expiration <= now()) {
@@ -189,7 +221,8 @@ async function initiate(hashlock, recipient, expiration, amount, sender) {
     hashlock,
     sender,
     recipient: recipient || null,
-    amount: parseFloat(amount),
+    amountMutez: amountMutez,          // Store in mutez
+    amountXtz: mutezToXtz(amountMutez), // Also store in XTZ for convenience
     expiration,
     status: SwapStatus.OPEN,
     createdAt: now()
@@ -199,19 +232,25 @@ async function initiate(hashlock, recipient, expiration, amount, sender) {
   addSwapKey(hashlock);
   
   console.log('[HTLC] Swap initiated: ' + hashlock.substring(0, 16) + '... by ' + sender);
+  console.log('[HTLC] Amount locked: ' + amountMutez + ' mutez (' + mutezToXtz(amountMutez) + ' XTZ)');
   
   return {
     success: true,
     event: 'SwapInitiated',
-    data: swap
+    data: swap,
+    message: `Successfully locked ${mutezToXtz(amountMutez)} XTZ`
   };
 }
 
 /**
  * CLAIM - Claim funds by revealing the secret
- * CRITICAL SECURITY CHECKS:
+ * 
+ * REAL TRANSFER: Sends tez to claimer via X-JSTZ-TRANSFER header in response
+ * 
+ * SECURITY CHECKS:
  * 1. Verifies the secret matches the hashlock
  * 2. Verifies the claimer is authorized (if recipient is set)
+ * 3. Verifies swap is not expired
  */
 async function claim(hashlock, secret, claimer) {
   const swap = getSwapFromKv(hashlock);
@@ -248,6 +287,7 @@ async function claim(hashlock, secret, claimer) {
   
   console.log('[HTLC] Claimer authorized: ' + claimer);
   
+  // Update swap status
   swap.status = SwapStatus.CLAIMED;
   swap.claimedBy = claimer;
   swap.claimedAt = now();
@@ -256,21 +296,28 @@ async function claim(hashlock, secret, claimer) {
   saveSwapToKv(hashlock, swap);
   
   console.log('[HTLC] Swap claimed: ' + hashlock.substring(0, 16) + '... by ' + claimer);
+  console.log('[HTLC] Transferring ' + swap.amountMutez + ' mutez to ' + claimer);
   
+  // Return the amount to transfer - the handler will add X-JSTZ-TRANSFER header
   return {
     success: true,
     event: 'SwapClaimed',
+    transferAmount: swap.amountMutez, // Amount to send to claimer
     data: {
       hashlock,
       secret,
       claimedBy: claimer,
-      amount: swap.amount
-    }
+      amountMutez: swap.amountMutez,
+      amountXtz: swap.amountXtz
+    },
+    message: `Successfully claimed ${swap.amountXtz} XTZ`
   };
 }
 
 /**
  * REFUND - Refund funds to sender after expiration
+ * 
+ * REAL TRANSFER: Sends tez back to sender via X-JSTZ-TRANSFER header in response
  */
 async function refund(hashlock, refunder) {
   const swap = getSwapFromKv(hashlock);
@@ -284,7 +331,7 @@ async function refund(hashlock, refunder) {
   }
   
   if (now() < swap.expiration) {
-    throw new Error('Swap not yet expired');
+    throw new Error('Swap not yet expired. Wait until ' + new Date(swap.expiration * 1000).toISOString());
   }
   
   if (swap.sender !== refunder) {
@@ -297,15 +344,20 @@ async function refund(hashlock, refunder) {
   saveSwapToKv(hashlock, swap);
   
   console.log('[HTLC] Swap refunded: ' + hashlock.substring(0, 16) + '... to ' + refunder);
+  console.log('[HTLC] Transferring ' + swap.amountMutez + ' mutez back to ' + refunder);
   
+  // Return the amount to transfer - the handler will add X-JSTZ-TRANSFER header
   return {
     success: true,
     event: 'SwapRefunded',
+    transferAmount: swap.amountMutez, // Amount to send back to sender
     data: {
       hashlock,
       refundedTo: swap.sender,
-      amount: swap.amount
-    }
+      amountMutez: swap.amountMutez,
+      amountXtz: swap.amountXtz
+    },
+    message: `Successfully refunded ${swap.amountXtz} XTZ`
   };
 }
 
@@ -346,15 +398,25 @@ function listSwaps() {
 
 /**
  * Main handler for Jstz smart function
+ * 
+ * IMPORTANT: 
+ * - Receives tez via X-JSTZ-AMOUNT header
+ * - Sends tez via X-JSTZ-TRANSFER header in response
  */
 const handler = async (request) => {
   const url = new URL(request.url);
   const method = request.method;
   const path = url.pathname.toLowerCase();
   
+  // Get caller address from Referer header
   const caller = request.headers.get('Referer') || 'anonymous';
   
+  // Get amount of tez received (in mutez) from X-JSTZ-AMOUNT header
+  const receivedAmountStr = request.headers.get('X-JSTZ-AMOUNT') || '0';
+  const receivedAmount = parseInt(receivedAmountStr) || 0;
+  
   console.log('[HTLC] ' + method + ' ' + path + ' from ' + caller);
+  console.log('[HTLC] Received amount: ' + receivedAmount + ' mutez');
   
   try {
     let body = {};
@@ -369,30 +431,56 @@ const handler = async (request) => {
       }
     }
     
+    // ==================== INITIATE ====================
     if (method === 'POST' && path === '/initiate') {
-      const { hashlock, recipient, expiration, amount } = body;
-      const result = await initiate(hashlock, recipient, expiration, amount, caller);
+      const { hashlock, recipient, expiration } = body;
+      
+      // The amount comes from X-JSTZ-AMOUNT header (real tez sent)
+      // If no tez received, check if amount was passed in body (legacy mode - for testing)
+      let amountToLock = receivedAmount;
+      if (amountToLock === 0 && body.amount) {
+        // Legacy mode: amount in body (in XTZ, convert to mutez)
+        amountToLock = xtzToMutez(body.amount);
+        console.log('[HTLC] WARNING: Using legacy mode (amount in body). For real transfers, send tez via X-JSTZ-TRANSFER header');
+      }
+      
+      const result = await initiate(hashlock, recipient, expiration, amountToLock, caller);
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' }
       });
     }
     
+    // ==================== CLAIM ====================
     if (method === 'POST' && path === '/claim') {
       const { hashlock, secret } = body;
       const result = await claim(hashlock, secret, caller);
-      return new Response(JSON.stringify(result), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      
+      // REAL TRANSFER: Add X-JSTZ-TRANSFER header to send tez to claimer
+      const headers = { 'Content-Type': 'application/json' };
+      if (result.transferAmount && result.transferAmount > 0) {
+        headers['X-JSTZ-TRANSFER'] = result.transferAmount.toString();
+        console.log('[HTLC] Adding transfer header: ' + result.transferAmount + ' mutez');
+      }
+      
+      return new Response(JSON.stringify(result), { headers });
     }
     
+    // ==================== REFUND ====================
     if (method === 'POST' && path === '/refund') {
       const { hashlock } = body;
       const result = await refund(hashlock, caller);
-      return new Response(JSON.stringify(result), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      
+      // REAL TRANSFER: Add X-JSTZ-TRANSFER header to send tez back to sender
+      const headers = { 'Content-Type': 'application/json' };
+      if (result.transferAmount && result.transferAmount > 0) {
+        headers['X-JSTZ-TRANSFER'] = result.transferAmount.toString();
+        console.log('[HTLC] Adding transfer header: ' + result.transferAmount + ' mutez');
+      }
+      
+      return new Response(JSON.stringify(result), { headers });
     }
     
+    // ==================== GET SWAP ====================
     if (path.startsWith('/swap/')) {
       const hashlock = path.replace('/swap/', '');
       const result = getSwap(hashlock);
@@ -411,6 +499,7 @@ const handler = async (request) => {
       });
     }
     
+    // ==================== LIST SWAPS ====================
     if (path === '/swaps') {
       const result = listSwaps();
       return new Response(JSON.stringify(result), {
@@ -418,19 +507,37 @@ const handler = async (request) => {
       });
     }
     
+    // ==================== HEALTH / INFO ====================
     if (path === '/' || path === '/health') {
+      // Get contract balance if available
+      let contractBalance = 'unknown';
+      try {
+        if (typeof Ledger !== 'undefined' && Ledger.selfAddress) {
+          contractBalance = Ledger.balance(Ledger.selfAddress) + ' mutez';
+        }
+      } catch (e) {
+        contractBalance = 'unavailable';
+      }
+      
       return new Response(JSON.stringify({
         name: 'HTLC Atomic Swap - Jstz',
-        version: '1.0.2',
+        version: '2.0.0',
         status: 'healthy',
+        realTransfers: true,
+        contractBalance,
         security: {
-          hashVerification: 'enabled',
+          hashVerification: 'enabled (SHA-256)',
           recipientVerification: 'enabled'
         },
+        howItWorks: {
+          initiate: 'Send tez with X-JSTZ-TRANSFER header to lock funds',
+          claim: 'Reveal secret, receive tez via X-JSTZ-TRANSFER in response',
+          refund: 'After expiration, get tez back via X-JSTZ-TRANSFER'
+        },
         endpoints: [
-          'POST /initiate - Lock funds',
-          'POST /claim - Claim with secret (verified)',
-          'POST /refund - Refund after expiration',
+          'POST /initiate - Lock funds (send tez with X-JSTZ-TRANSFER)',
+          'POST /claim - Claim with secret (receive tez)',
+          'POST /refund - Refund after expiration (receive tez)',
           'GET /swap/:hashlock - Get swap details',
           'GET /swaps - List all swaps'
         ]

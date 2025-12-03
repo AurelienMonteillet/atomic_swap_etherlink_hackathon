@@ -14,7 +14,7 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 | Network | Contract | Address |
 |---------|----------|---------|
 | **Etherlink Testnet** | HTLC Solidity | `0x79826f6Ab82C24395123f8419E3aFb995d906bAd` |
-| **Jstz Privatenet** | HTLC Smart Function | `KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE` |
+| **Jstz Privatenet** | HTLC Smart Function | `KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W` |
 
 ---
 
@@ -80,7 +80,7 @@ jstz network add privatenet \
 
 **Verify it works:**
 ```bash
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/" -n privatenet -m POST -d '{}'
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/" -n privatenet -m POST -d '{}'
 ```
 
 Should output something like: `{"status":"healthy","swaps_count":...}`
@@ -158,7 +158,7 @@ HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 EXPIRATION=$(($(date +%s) + 1800))
 
 # Lock 10 XTZ with the same hash
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/initiate" \
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/initiate" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"recipient\":null,\"expiration\":$EXPIRATION,\"amount\":\"10\"}"
 ```
@@ -178,7 +178,7 @@ jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/initiate" \
 
 **Verify the swap exists:**
 ```bash
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/$HASH" \
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/swap/$HASH" \
   -n privatenet -m POST -d '{}'
 ```
 
@@ -193,7 +193,7 @@ jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/$HASH" \
 SECRET="0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c"
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/claim" \
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/claim" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"secret\":\"$SECRET\"}"
 ```
@@ -239,7 +239,7 @@ jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/claim" \
 ```bash
 # Check Jstz swap status
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/$HASH" \
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/swap/$HASH" \
   -n privatenet -m POST -d '{}'
 ```
 
@@ -259,7 +259,7 @@ If the swap expires (timelock passes) and the other party didn't claim:
 **On Jstz (CLI):**
 ```bash
 HASH="your_hash_here"
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/refund" \
+jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/refund" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\"}"
 ```
