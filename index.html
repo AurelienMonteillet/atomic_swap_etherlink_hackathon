@@ -1002,13 +1002,13 @@
                 }
                 
                 log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
-                log('🔗 MODE ETHERLINK ACTIVÉ (Vous êtes ALICE)', 'success');
+                log('🔗 ETHERLINK MODE ACTIVATED (You are ALICE)', 'success');
                 log('📍 Direction: Etherlink → Jstz', 'info');
                 log('', 'system');
-                log('✅ Vous pouvez INITIER un nouveau swap:', 'success');
-                log('   1. Cliquez "Initiate" pour générer un hash', 'system');
-                log('   2. Cliquez "Initiate Swap" pour verrouiller vos XTZ', 'system');
-                log('   3. Partagez le HASH avec Bob', 'system');
+                log('✅ You can INITIATE a new swap:', 'success');
+                log('   1. Click "Initiate" to generate a hash', 'system');
+                log('   2. Click "Initiate Swap" to lock your XTZ', 'system');
+                log('   3. Share the HASH with Bob', 'system');
                 log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
                 
             } else if (connectedWallet === 'jstz') {
@@ -1039,12 +1039,12 @@
                 }
                 
                 log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
-                log('🔗 MODE JSTZ ACTIVÉ (Vous êtes BOB)', 'warning');
+                log('🔗 JSTZ MODE ACTIVATED (You are BOB)', 'warning');
                 log('📍 Direction: Jstz → Etherlink', 'info');
                 log('', 'system');
-                log('⚠️ IMPORTANT: Pour initier un swap depuis Jstz:', 'warning');
-                log('   Alice doit d\'abord avoir locké sur Etherlink!', 'info');
-                log('   Utilisez "Join" et collez le hash d\'Alice.', 'system');
+                log('⚠️ IMPORTANT: To initiate a swap from Jstz:', 'warning');
+                log('   Alice must have locked funds on Etherlink first!', 'info');
+                log('   Use "Join" and paste Alice\'s hash.', 'system');
                 log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
                 
             } else {
@@ -1857,10 +1857,10 @@
                 
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
                 log("👤 MODE: ALICE (Initiator)", 'success');
-                log("📋 Vous CRÉEZ un nouveau swap", 'info');
-                log("1️⃣ Générez un secret et un hash", 'system');
-                log("2️⃣ Cliquez 'Initiate Swap' pour verrouiller vos fonds", 'system');
-                log("3️⃣ Partagez le HASH avec Bob (pas le secret!)", 'system');
+                log("📋 You are CREATING a new swap", 'info');
+                log("1️⃣ Generate a secret and a hash", 'system');
+                log("2️⃣ Click 'Initiate Swap' to lock your funds", 'system');
+                log("3️⃣ Share the HASH with Bob (not the secret!)", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             } else {
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
@@ -1890,11 +1890,11 @@
                 
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
                 log("👤 MODE: BOB (Participant)", 'warning');
-                log("📋 Vous RÉPONDEZ à un swap existant", 'info');
-                log("⚠️ PRÉREQUIS: Alice doit avoir DÉJÀ verrouillé ses fonds!", 'warning');
-                log("1️⃣ Collez le HASH reçu d'Alice", 'system');
-                log("2️⃣ Le système vérifie qu'Alice a bien locké", 'system');
-                log("3️⃣ Cliquez 'Match Swap' pour verrouiller vos fonds", 'system');
+                log("📋 You are RESPONDING to an existing swap", 'info');
+                log("⚠️ PREREQUISITE: Alice must have ALREADY locked her funds!", 'warning');
+                log("1️⃣ Paste the HASH received from Alice", 'system');
+                log("2️⃣ The system verifies Alice has locked funds", 'system');
+                log("3️⃣ Click 'Match Swap' to lock your funds", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             }
         }
@@ -2047,16 +2047,16 @@
                 
                 log(``, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`🎉 SWAP INITIÉ AVEC SUCCÈS!`, 'success');
+                log(`🎉 SWAP INITIATED SUCCESSFULLY!`, 'success');
                 log(``, 'system');
-                log(`📋 PROCHAINE ÉTAPE:`, 'warning');
-                log(`   Partagez ce HASH avec Bob:`, 'info');
+                log(`📋 NEXT STEP:`, 'warning');
+                log(`   Share this HASH with Bob:`, 'info');
                 log(`   ${state.hash}`, 'system');
                 log(``, 'system');
-                log(`👤 BOB DOIT:`, 'info');
-                log(`   1. Se connecter avec son wallet Jstz`, 'system');
-                log(`   2. Cliquer sur "Join" et coller le hash`, 'system');
-                log(`   3. Cliquer "Match Swap" pour verrouiller ses fonds`, 'system');
+                log(`👤 BOB MUST:`, 'info');
+                log(`   1. Connect with his Jstz wallet`, 'system');
+                log(`   2. Click "Join" and paste the hash`, 'system');
+                log(`   3. Click "Match Swap" to lock his funds`, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 // Pre-fill values for redeem tab
@@ -2171,19 +2171,19 @@
                 
                 log(``, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`🎉 SWAP INITIÉ AVEC SUCCÈS SUR JSTZ!`, 'success');
-                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(`🎉 SWAP INITIATED SUCCESSFULLY ON JSTZ!`, 'success');
+                log(`💰 Funds locked: ${amount} XTZ`, 'success');
                 log(``, 'system');
-                log(`📋 PROCHAINE ÉTAPE:`, 'warning');
-                log(`   Partagez ce HASH avec Bob:`, 'info');
+                log(`📋 NEXT STEP:`, 'warning');
+                log(`   Share this HASH with Bob:`, 'info');
                 log(`   ${state.hash}`, 'system');
                 log(``, 'system');
-                log(`👤 BOB DOIT:`, 'info');
-                log(`   1. Se connecter avec MetaMask (Etherlink)`, 'system');
-                log(`   2. Cliquer sur "Join" et coller le hash`, 'system');
-                log(`   3. Cliquer "Match Swap" pour verrouiller ses fonds`, 'system');
+                log(`👤 BOB MUST:`, 'info');
+                log(`   1. Connect with MetaMask (Etherlink)`, 'system');
+                log(`   2. Click "Join" and paste the hash`, 'system');
+                log(`   3. Click "Match Swap" to lock his funds`, 'system');
                 log(``, 'system');
-                log(`⏰ Après que Bob ait locké, vous pourrez claim sur Etherlink!`, 'warning');
+                log(`⏰ After Bob locks funds, you can claim on Etherlink!`, 'warning');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(2);
@@ -2194,7 +2194,7 @@
                 btn.innerHTML = `<span>Waiting for Bob on Etherlink...</span>`;
                 
                 setTimeout(() => {
-                    log("Prêt à claim sur Etherlink (quand Bob a locké)", 'system');
+                    log("Ready to claim on Etherlink (when Bob has locked)", 'system');
                     btn.disabled = false;
                     updateProgress(3);
                 }, 2000);
@@ -2251,18 +2251,18 @@
             
             if (!aliceSwap.valid) {
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`❌ ERREUR: Aucun swap trouvé sur Etherlink!`, 'error');
+                log(`❌ ERROR: No swap found on Etherlink!`, 'error');
                 log(``, 'system');
-                log(`📋 Ce que ça signifie:`, 'warning');
-                log(`   Alice n'a pas encore verrouillé ses fonds`, 'info');
-                log(`   avec ce HashLock sur Etherlink.`, 'info');
+                log(`📋 What this means:`, 'warning');
+                log(`   Alice has not yet locked her funds`, 'info');
+                log(`   with this HashLock on Etherlink.`, 'info');
                 log(``, 'system');
-                log(`✅ Ce que vous devez faire:`, 'success');
-                log(`   1. Demandez à Alice de d'abord initier le swap`, 'system');
-                log(`   2. Alice doit cliquer "From Etherlink" avec ce hash`, 'system');
-                log(`   3. Puis revenez ici pour "Match Swap"`, 'system');
+                log(`✅ What you need to do:`, 'success');
+                log(`   1. Ask Alice to initiate the swap first`, 'system');
+                log(`   2. Alice must click "From Etherlink" with this hash`, 'system');
+                log(`   3. Then come back here to "Match Swap"`, 'system');
                 log(``, 'system');
-                log(`🔑 HashLock attendu: ${hashlock.substring(0, 20)}...`, 'info');
+                log(`🔑 Expected HashLock: ${hashlock.substring(0, 20)}...`, 'info');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
@@ -2337,28 +2337,28 @@
                 
                 log(``, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`🎉 SWAP MATCHÉ AVEC SUCCÈS!`, 'success');
-                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(`🎉 SWAP MATCHED SUCCESSFULLY!`, 'success');
+                log(`💰 Funds locked: ${amount} XTZ`, 'success');
                 log(``, 'system');
-                log(`📋 PROCHAINES ÉTAPES:`, 'warning');
-                log(`   1. Attendez qu'Alice claim vos fonds sur Jstz`, 'info');
-                log(`   2. Quand elle claim, le SECRET sera révélé`, 'info');
-                log(`   3. Utilisez ce secret pour claim sur Etherlink!`, 'info');
+                log(`📋 NEXT STEPS:`, 'warning');
+                log(`   1. Wait for Alice to claim your funds on Jstz`, 'info');
+                log(`   2. When she claims, the SECRET will be revealed`, 'info');
+                log(`   3. Use this secret to claim on Etherlink!`, 'info');
                 log(``, 'system');
-                log(`⏰ IMPORTANT: Claimez avant l'expiration du swap d'Alice!`, 'warning');
+                log(`⏰ IMPORTANT: Claim before Alice's swap expires!`, 'warning');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(3);
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.hash, null);
-                log("Allez sur l'onglet 'Redeem / Refund' quand le secret est révélé", 'system');
+                log("Go to 'Redeem / Refund' tab when the secret is revealed", 'system');
                 
                 btn.innerHTML = `<span>Waiting for Secret...</span>`;
                 
                 // Poll for secret revelation or enable manual claim
                 setTimeout(() => {
-                    log("Prêt à claim sur Etherlink (quand Alice révèle le secret)", 'system');
+                    log("Ready to claim on Etherlink (when Alice reveals the secret)", 'system');
                     btn.disabled = false;
                     btn.innerHTML = `<span>Waiting for Secret...</span>`;
                     // No onClick needed here, user should go to Redeem tab
@@ -2410,7 +2410,7 @@
             
             // ========== VERIFY ALICE'S SWAP EXISTS ON JSTZ ==========
             log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
-            log("🔍 BOB VÉRIFIE LE SWAP D'ALICE SUR JSTZ", 'warning');
+            log("🔍 BOB VERIFYING ALICE'S SWAP ON JSTZ", 'warning');
             log("⚠️ Cannot auto-verify Jstz swap (extension limitation)", 'warning');
             log(`💡 Verify manually with CLI:`, 'system');
             log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashlock}" -n privatenet -m POST -d '{}'</code>`, 'info');
@@ -2489,16 +2489,16 @@
                 
                 log(``, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`🎉 SWAP MATCHÉ AVEC SUCCÈS SUR ETHERLINK!`, 'success');
+                log(`🎉 SWAP MATCHED SUCCESSFULLY ON ETHERLINK!`, 'success');
                 logTx(receipt.hash || tx.hash, '✅ Confirmed');
-                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(`💰 Funds locked: ${amount} XTZ`, 'success');
                 log(``, 'system');
-                log(`📋 PROCHAINES ÉTAPES:`, 'warning');
-                log(`   1. Attendez qu'Alice claim vos fonds sur Etherlink`, 'info');
-                log(`   2. Quand elle claim, le SECRET sera révélé`, 'info');
-                log(`   3. Utilisez ce secret pour claim sur Jstz!`, 'info');
+                log(`📋 NEXT STEPS:`, 'warning');
+                log(`   1. Wait for Alice to claim your funds on Etherlink`, 'info');
+                log(`   2. When she claims, the SECRET will be revealed`, 'info');
+                log(`   3. Use this secret to claim on Jstz!`, 'info');
                 log(``, 'system');
-                log(`⏰ IMPORTANT: Claimez avant l'expiration du swap d'Alice!`, 'warning');
+                log(`⏰ IMPORTANT: Claim before Alice's swap expires!`, 'warning');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(3);
@@ -2509,7 +2509,7 @@
                 btn.innerHTML = `<span>Waiting for Secret...</span>`;
                 
                 setTimeout(() => {
-                    log("Prêt à claim sur Jstz (quand Alice révèle le secret)", 'system');
+                    log("Ready to claim on Jstz (when Alice reveals the secret)", 'system');
                     btn.disabled = false;
                 }, 2000);
 
