@@ -3,19 +3,31 @@
 A trustless atomic swap interface between **Etherlink** (EVM L2) and **Jstz** (Tezos Smart Rollup Layer). 
 Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (HTLC).
 
+🏆 **Built for the Jstz Hackathon**
+
+## 🌐 Live Demo
+
+- **Frontend**: http://localhost:8080 (local)
+- **Jstz Sandbox**: https://sandbox.jstz.info
+- **Etherlink Testnet**: https://node.ghostnet.etherlink.com
+
 ## 🚀 Features
 
 - ✅ **Real Smart Contracts**: HTLC deployed on both Etherlink (Solidity) and Jstz (JavaScript)
 - ✅ **Visual Flow**: Step-by-step tracker for the atomic swap lifecycle
 - ✅ **Dual Chain Support**: Swap between Etherlink and Jstz networks
-- ✅ **Security**: Client-side secret generation with keccak256 hashing
+- ✅ **My Swaps Tab**: Auto-detect and track all your active swaps
+- ✅ **Security**: Comprehensive validation checks to prevent cheating
 - ✅ **Modern UI**: Dark mode, glassmorphism, and neon green accents
+- ✅ **Custom Modals**: Beautiful confirmation dialogs and transaction links
 
 ## 📁 Project Structure
 
 ```
 atomic_swap_etherlink_hackathon/
 ├── index.html              # Frontend interface
+├── test.html               # Automated tests page
+├── test-scenarios.js       # E2E test scenarios
 ├── contracts/
 │   ├── jstz/
 │   │   └── htlc.js         # Jstz Smart Function (HTLC)
@@ -37,89 +49,129 @@ atomic_swap_etherlink_hackathon/
 ### Prerequisites
 
 - Node.js 18+
-- Docker (for Jstz sandbox)
-- npm or yarn
+- MetaMask wallet with Etherlink Testnet configured
+- Jstz CLI (`npm i -g @jstz-dev/cli`)
 
 ### Installation
 
 ```bash
-# Install Jstz CLI
-npm i -g @jstz-dev/cli
+# Clone the repo
+git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
+cd atomic_swap_etherlink_hackathon
 
-# Install Etherlink contract dependencies
+# Install Etherlink contract dependencies (for local testing)
 cd contracts/etherlink
 npm install
 ```
 
-### Running Locally
+### Running the App
 
-**1. Start Jstz Sandbox:**
-```bash
-jstz sandbox --container start -d
-```
+**Option 1: Use Deployed Contracts (Recommended)**
 
-**2. Deploy Jstz Smart Function:**
-```bash
-jstz deploy contracts/jstz/htlc.js --name htlc -n dev
-```
-
-**3. Start Hardhat Local Node:**
-```bash
-cd contracts/etherlink
-npx hardhat node
-```
-
-**4. Deploy Etherlink Contract:**
-```bash
-npx hardhat run scripts/deploy.js --network localhost
-```
-
-**5. Open Frontend:**
 ```bash
 # From project root
-python3 -m http.server 8000
-# Then open http://localhost:8000
+python3 -m http.server 8080
+
+# Open http://localhost:8080
 ```
 
-## 📝 Contract Addresses
+The frontend is already configured to use:
+- **Etherlink Testnet**: Contract `0x32a57e30880174145cb002f526487cb74d0fcf46`
+- **Jstz Sandbox**: Smart Function `KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59`
 
-### Local Development
+**Option 2: Local Development**
 
-- **Etherlink HTLC**: `0x5FbDB2315678afecb367f032d93F642f64180aa3` (Hardhat local)
-- **Jstz HTLC**: `jstz://htlc/` (Sandbox dev)
+```bash
+# 1. Start Hardhat local node
+cd contracts/etherlink
+npx hardhat node
 
-Update the address in `index.html` if deploying to different networks.
+# 2. Deploy contract (in another terminal)
+npx hardhat run scripts/deploy.js --network localhost
+
+# 3. Start frontend (from project root)
+python3 -m http.server 8080
+```
+
+## 📝 Deployed Contract Addresses
+
+### Production (Public Networks)
+
+| Network | Contract Type | Address |
+|---------|--------------|---------|
+| **Etherlink Testnet** | HTLC Solidity | `0x32a57e30880174145cb002f526487cb74d0fcf46` |
+| **Jstz Sandbox** | HTLC Smart Function | `KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59` |
+
+### Network Configuration
+
+| Network | Chain ID | RPC URL |
+|---------|----------|---------|
+| Etherlink Testnet | 128123 | https://node.ghostnet.etherlink.com |
+| Jstz Sandbox | - | https://sandbox.jstz.info |
 
 ## 🔄 Atomic Swap Flow
 
 ```
-1. Alice generates secret → calculates hashlock
+1. Alice generates secret → calculates hashlock (keccak256)
 2. Alice locks ETH on Etherlink (initiateSwap)
 3. Bob verifies hashlock, locks XTZ on Jstz (POST /initiate)
 4. Alice claims XTZ on Jstz (reveals secret via POST /claim)
 5. Bob uses revealed secret to claim ETH on Etherlink (claimSwap)
 ```
 
+### Security Checks
+
+- ✅ Swap existence verification before claim/refund
+- ✅ Hashlock validation (secret must match)
+- ✅ Timelock validation (Bob's must be shorter than Alice's)
+- ✅ Expiration checks (claim before expiry, refund after)
+- ✅ Sender authorization for refunds
+- ✅ Duplicate swap prevention
+
 ## 🧪 Testing
 
+### Hardhat Unit Tests (12 tests)
 ```bash
-# Test Etherlink contract
 cd contracts/etherlink
 npx hardhat test
 ```
 
-All 12 tests should pass ✅
+### Jstz Smart Function Tests
+```bash
+# Configure sandbox network
+jstz network add sandbox --octez-node-rpc-endpoint https://sandbox.jstz.info --jstz-node-endpoint https://sandbox.jstz.info
 
-## 📚 Documentation
+# Test health endpoint
+jstz run "jstz://KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59/" -n sandbox -m POST -d '{}'
 
-See `contracts/README.md` for detailed contract documentation and API.
+# Test initiate
+jstz run "jstz://KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59/initiate" -n sandbox -m POST -d '{"hashlock":"0x123...","recipient":"tz1...","expiration":1234567890,"amount":"10"}'
+```
 
 ## 🏗️ Tech Stack
 
 - **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript
-- **Etherlink**: Solidity 0.8.20, Hardhat
-- **Jstz**: JavaScript (Smart Functions)
-- **Libraries**: ethers.js, crypto-js
+- **Etherlink**: Solidity 0.8.20, Hardhat, ethers.js
+- **Jstz**: JavaScript Smart Functions, Kv persistent storage
+- **Libraries**: ethers.js v6, crypto-js
+
+## 📱 Wallet Setup
+
+### MetaMask (Etherlink)
+
+Add Etherlink Testnet to MetaMask:
+- **Network Name**: Etherlink Testnet
+- **RPC URL**: https://node.ghostnet.etherlink.com
+- **Chain ID**: 128123
+- **Symbol**: XTZ
+- **Explorer**: https://testnet.explorer.etherlink.com
+
+### Jstz Wallet
+
+Use the Jstz CLI to interact with the sandbox:
+```bash
+jstz whoami -n sandbox
+```
 
 ## 📄 License
 
@@ -127,4 +179,8 @@ MIT License - see LICENSE file
 
 ## 🤝 Contributing
 
-This project was built for the Etherlink Internal Hackathon. Contributions welcome!
+This project was built for the Jstz Hackathon. Contributions welcome!
+
+---
+
+**Made with ❤️ by Aurélien Monteillet**

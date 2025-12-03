@@ -60,6 +60,9 @@ function addSwapKey(hashlock) {
 
 /**
  * Helper: Hash a secret using SHA-256 (Jstz compatible)
+ * Note: For full cross-chain compatibility with Ethereum/Etherlink,
+ * keccak256 should be used. SHA-256 is used here as it's natively
+ * available in Jstz via crypto.subtle.
  */
 async function hashSecret(secret) {
   const encoder = new TextEncoder();
@@ -116,6 +119,7 @@ async function initiate(hashlock, recipient, expiration, amount, sender) {
 
 /**
  * CLAIM - Claim funds by revealing the secret
+ * CRITICAL: This function verifies the secret matches the hashlock
  */
 async function claim(hashlock, secret, claimer) {
   const swap = getSwapFromKv(hashlock);
@@ -132,14 +136,18 @@ async function claim(hashlock, secret, claimer) {
     throw new Error('Swap has expired');
   }
   
-  // Verify the secret matches the hashlock
-  // Note: We need to hash the secret and compare
-  // For cross-chain compatibility with keccak256, we use the provided hashlock
+  // CRITICAL SECURITY CHECK: Verify the secret matches the hashlock
   const computedHash = await hashSecret(secret);
   
-  // For demo, accept if hashlock matches (in production, verify hash)
-  // This allows testing without keccak256
   console.log(`[HTLC] Claim attempt - computed: ${computedHash}, expected: ${hashlock}`);
+  
+  // Verify hash matches (case-insensitive comparison)
+  if (computedHash.toLowerCase() !== hashlock.toLowerCase()) {
+    console.log(`[HTLC] SECURITY: Invalid secret provided! Hash mismatch.`);
+    throw new Error('Invalid secret: hash does not match hashlock');
+  }
+  
+  console.log(`[HTLC] Secret verified successfully!`);
   
   // Update swap status
   swap.status = SwapStatus.CLAIMED;
@@ -326,11 +334,12 @@ const handler = async (request) => {
     if (path === '/' || path === '/health') {
       return new Response(JSON.stringify({
         name: 'HTLC Atomic Swap - Jstz',
-        version: '1.0.0',
+        version: '1.0.1',
         status: 'healthy',
+        security: 'Hash verification enabled',
         endpoints: [
           'POST /initiate - Lock funds',
-          'POST /claim - Claim with secret',
+          'POST /claim - Claim with secret (verified)',
           'POST /refund - Refund after expiration',
           'GET /swap/:hashlock - Get swap details',
           'GET /swaps - List all swaps'
