@@ -1756,12 +1756,17 @@
                     console.log('[JSTZ] Using SDK for injection, operation:', signedOperation);
                     
                     try {
-                        const { result: { inner } } = await jstzClient.operations.injectAndPoll({
+                        const injectionResult = await jstzClient.operations.injectAndPoll({
                             inner: signedOperation,
                             signature: signature
                         });
                         
+                        console.log('[JSTZ] SDK injection full result:', injectionResult);
+                        
+                        const { result: { inner }, hash } = injectionResult;
+                        
                         console.log('[JSTZ] SDK injection result inner:', inner);
+                        console.log('[JSTZ] Operation hash:', hash);
                         
                         // Parse response body (body is base64 encoded)
                         let returnedMessage = 'Success';
@@ -1784,9 +1789,38 @@
                             returnedMessage = inner;
                         }
                         
+                        // Build operation URL for dashboard
+                        // Hash is returned as byte array, convert to hex
+                        let operationHash = null;
+                        if (hash && Array.isArray(hash)) {
+                            operationHash = '0x' + hash.map(b => b.toString(16).padStart(2, '0')).join('');
+                            console.log('[JSTZ] Operation hash (hex):', operationHash);
+                        }
+                        
+                        // The dashboard uses msg_X_Y format, try to find it
+                        let operationId = injectionResult.operationId || injectionResult.id || injectionResult.messageId;
+                        let operationUrl = null;
+                        
+                        // Log full result to find the ID format
+                        console.log('[JSTZ] Looking for operation ID:', {
+                            operationId,
+                            hash: operationHash,
+                            keys: Object.keys(injectionResult)
+                        });
+                        
                         log(`✅ Jstz operation successful!`, 'success');
+                        
+                        if (operationId && typeof operationId === 'string' && operationId.startsWith('msg_')) {
+                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${operationId}?tab=response`;
+                            log(`<a href="${operationUrl}" target="_blank" class="text-jstz-accent hover:underline">📋 View on Dashboard: ${operationId}</a>`, 'info');
+                        } else if (operationHash) {
+                            // Link to dashboard with hash (may not work but better than nothing)
+                            log(`🔗 Operation hash: <code class="text-xs bg-black/50 px-1 rounded">${operationHash.substring(0, 18)}...</code>`, 'info');
+                            log(`<a href="https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}" target="_blank" class="text-jstz-accent hover:underline">📋 View Contract on Dashboard</a>`, 'info');
+                        }
+                        
                         console.log('[JSTZ] Parsed response:', returnedMessage);
-                        return { success: true, message: returnedMessage };
+                        return { success: true, message: returnedMessage, operationId, operationUrl };
                         
                     } catch (sdkError) {
                         console.error('[JSTZ] SDK injection error:', sdkError);
@@ -2361,11 +2395,11 @@
                 actionBtn.className = "btn-primary w-full py-4 rounded-xl text-lg shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-2 group";
                 
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
-                log("👤 MODE: ALICE (Initiator)", 'success');
+                log("👤 MODE: INITIATOR", 'success');
                 log("📋 You are CREATING a new swap", 'info');
                 log("1️⃣ Generate a secret and a hash", 'system');
                 log("2️⃣ Click 'Initiate Swap' to lock your funds", 'system');
-                log("3️⃣ Share the HASH with Bob (not the secret!)", 'system');
+                log("3️⃣ Share the HASH with counterparty (not the secret!)", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             } else {
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
@@ -2416,11 +2450,11 @@
                 actionBtn.disabled = true;
                 
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
-                log("👤 MODE: BOB (Participant)", 'warning');
+                log("👤 MODE: PARTICIPANT", 'warning');
                 log("📋 You are RESPONDING to an existing swap", 'info');
-                log("⚠️ PREREQUISITE: Alice must have ALREADY locked her funds!", 'warning');
-                log("1️⃣ Paste the HASH received from Alice", 'system');
-                log("2️⃣ Click 'Verify' to check Alice's swap details", 'system');
+                log("⚠️ PREREQUISITE: Initiator must have ALREADY locked their funds!", 'warning');
+                log("1️⃣ Paste the HASH received from initiator", 'system');
+                log("2️⃣ Click 'Verify' to check their swap details", 'system');
                 log("3️⃣ Review the amount, then click 'Match Swap'", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             }
@@ -2577,24 +2611,24 @@
                 log(`🎉 SWAP INITIATED SUCCESSFULLY!`, 'success');
                 log(``, 'system');
                 log(`📋 NEXT STEP:`, 'warning');
-                log(`   Share this HASH with Bob:`, 'info');
+                log(`   Share this HASH with your counterparty:`, 'info');
                 log(`   ${state.hash}`, 'system');
                 log(``, 'system');
-                log(`👤 BOB MUST:`, 'info');
-                log(`   1. Connect with his Jstz wallet`, 'system');
+                log(`👤 COUNTERPARTY MUST:`, 'info');
+                log(`   1. Connect their Jstz wallet`, 'system');
                 log(`   2. Click "Join" and paste the hash`, 'system');
-                log(`   3. Click "Match Swap" to lock his funds`, 'system');
+                log(`   3. Click "Match Swap" to lock their funds`, 'system');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.currentSwapId, state.secret);
                 log("Go to 'Redeem / Refund' tab to claim or refund later", 'system');
                 
-                // Enable claim button after Bob participates
+                // Enable claim button after counterparty participates
                 setTimeout(() => {
-                    log("Ready to claim on Jstz (when Bob has locked funds)", 'system');
+                    log("Ready to claim on Jstz (when counterparty has locked funds)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Waiting for Bob...</span>`;
+                    btn.innerHTML = `<span>Waiting for counterparty...</span>`;
                     // No onClick needed here, user should go to Redeem tab
                     updateProgress(3);
                 }, 2000);
@@ -2709,15 +2743,15 @@
                 log(`💰 Funds locked: ${amount} XTZ`, 'success');
                 log(``, 'system');
                 log(`📋 NEXT STEP:`, 'warning');
-                log(`   Share this HASH with Bob:`, 'info');
+                log(`   Share this HASH with your counterparty:`, 'info');
                 log(`   ${state.hash}`, 'system');
                 log(``, 'system');
-                log(`👤 BOB MUST:`, 'info');
+                log(`👤 COUNTERPARTY MUST:`, 'info');
                 log(`   1. Connect with MetaMask (Etherlink)`, 'system');
                 log(`   2. Click "Join" and paste the hash`, 'system');
-                log(`   3. Click "Match Swap" to lock his funds`, 'system');
+                log(`   3. Click "Match Swap" to lock their funds`, 'system');
                 log(``, 'system');
-                log(`⏰ After Bob locks funds, you can claim on Etherlink!`, 'warning');
+                log(`⏰ After counterparty locks funds, you can claim on Etherlink!`, 'warning');
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(2);
@@ -2725,10 +2759,10 @@
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.currentSwapId, state.secret);
                 
-                btn.innerHTML = `<span>Waiting for Bob on Etherlink...</span>`;
+                btn.innerHTML = `<span>Waiting for counterparty...</span>`;
                 
                 setTimeout(() => {
-                    log("Ready to claim on Etherlink (when Bob has locked)", 'system');
+                    log("Ready to claim on Etherlink (when counterparty has locked)", 'system');
                     btn.disabled = false;
                     updateProgress(3);
                 }, 2000);
@@ -3142,12 +3176,12 @@
                 log(`Secret: ${secret.substring(0, 18)}...`, 'system');
                 
                 // Call Jstz smart function to claim
-                log(`Calling Jstz HTLC: jstz://htlc/claim`, 'system');
+                log(`Calling Jstz HTLC: /claim`, 'system');
                 
                 const response = await jstzRequest('POST', '/claim', {
                     hashlock: hashLock,
                     secret: secret
-                });
+                }, { forceWallet: true });
                 
                 // Handle CLI fallback
                 if (response && response.cliRequired) {
@@ -3810,8 +3844,10 @@
             emptyEl.classList.add('hidden');
             listEl.innerHTML = '';
             
+            // Load Etherlink swaps (only if connected)
+            if (hasEtherlink && state.provider) {
             try {
-                console.log('[MY SWAPS] Loading swaps for:', state.etherlinkAddress);
+                console.log('[MY SWAPS] Loading Etherlink swaps for:', state.etherlinkAddress);
                 
                 // Get current block number
                 const currentBlock = await state.provider.getBlockNumber();
@@ -3929,6 +3965,10 @@
                 console.error('[MY SWAPS] Etherlink error:', error);
                 log(`Error loading Etherlink swaps: ${error.message}`, 'error');
             }
+            } else {
+                // No Etherlink connection, reset swaps
+                state.mySwaps = [];
+            }
             
             // Also load Jstz swaps if connected
             if (state.jstzAddress) {
@@ -3984,25 +4024,44 @@
                         }
                     }
                     
+                    console.log('[JSTZ SWAPS] Parsed data:', swapsData);
+                    
+                    // Handle both array and object formats
+                    let swapsArray = [];
+                    if (Array.isArray(swapsData)) {
+                        swapsArray = swapsData;
+                    } else if (swapsData.swaps && Array.isArray(swapsData.swaps)) {
+                        swapsArray = swapsData.swaps;
+                    } else if (typeof swapsData === 'object') {
+                        // Single swap object
+                        swapsArray = [swapsData];
+                    }
+                    
+                    console.log('[JSTZ SWAPS] Swaps array:', swapsArray);
+                    
                     // Filter swaps for current user
                     const userAddress = state.jstzAddress.toLowerCase();
-                    const userSwaps = (swapsData.swaps || []).filter(s => 
+                    const userSwaps = swapsArray.filter(s => 
                         s.sender?.toLowerCase() === userAddress || 
                         s.recipient?.toLowerCase() === userAddress
                     );
                     
-                    // Format swaps to match Etherlink format
+                    console.log('[JSTZ SWAPS] User swaps:', userSwaps.length);
+                    
+                    // Format swaps to match Etherlink format (include ALL statuses for history)
                     return userSwaps.map(swap => ({
                         swapId: swap.hashlock,
                         hashLock: swap.hashlock,
                         sender: swap.sender,
                         recipient: swap.recipient,
-                        amount: swap.amount || (swap.amountMutez ? swap.amountMutez / 1000000 : 0),
+                        amount: swap.amountXtz || swap.amount || (swap.amountMutez ? swap.amountMutez / 1000000 : 0),
                         expiration: swap.expiration,
                         status: swap.status === 'OPEN' ? 0 : swap.status === 'CLAIMED' ? 1 : 2,
                         isInitiator: swap.sender?.toLowerCase() === userAddress,
                         chain: 'jstz',
-                        revealedSecret: swap.revealedSecret || null
+                        revealedSecret: swap.revealedSecret || null,
+                        claimedBy: swap.claimedBy || null,
+                        claimedAt: swap.claimedAt || null
                     }));
                 }
                 
@@ -4013,11 +4072,61 @@
             }
         }
         
-        // Render all swaps in the list
+        // Render all swaps in the list (separated by Active and History)
         function renderSwapsList(swaps = null) {
             const listEl = document.getElementById('swaps-list');
             const allSwaps = swaps || [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
-            listEl.innerHTML = allSwaps.map(swap => renderSwapCard(swap)).join('');
+            
+            // Separate active (status 0 = OPEN) from history (status 1 = CLAIMED, 2 = REFUNDED)
+            const activeSwaps = allSwaps.filter(s => s.status === 0);
+            const historySwaps = allSwaps.filter(s => s.status !== 0);
+            
+            // Sort: active by expiration (closest first), history by most recent
+            activeSwaps.sort((a, b) => a.expiration - b.expiration);
+            historySwaps.sort((a, b) => (b.claimedAt || b.expiration) - (a.claimedAt || a.expiration));
+            
+            let html = '';
+            
+            // Active swaps section
+            if (activeSwaps.length > 0) {
+                html += `
+                    <div class="mb-4">
+                        <h4 class="text-xs font-bold text-green-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-bolt"></i> Active Swaps (${activeSwaps.length})
+                        </h4>
+                        <div class="space-y-3">
+                            ${activeSwaps.map(swap => renderSwapCard(swap)).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // History section
+            if (historySwaps.length > 0) {
+                html += `
+                    <div class="${activeSwaps.length > 0 ? 'mt-6 pt-6 border-t border-white/10' : ''}">
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-clock-rotate-left"></i> History (${historySwaps.length})
+                        </h4>
+                        <div class="space-y-3 opacity-80">
+                            ${historySwaps.map(swap => renderSwapCard(swap)).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Empty state
+            if (allSwaps.length === 0) {
+                html = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fa-regular fa-folder-open text-4xl mb-3 block"></i>
+                        <p>No swaps found</p>
+                        <p class="text-xs mt-1">Initiate or join a swap to see it here</p>
+                    </div>
+                `;
+            }
+            
+            listEl.innerHTML = html;
         }
         
         // Render a single swap card
@@ -4026,7 +4135,16 @@
             const now = Math.floor(Date.now() / 1000);
             const isExpired = now >= swap.expiration;
             const timeRemaining = swap.expiration - now;
-            const role = swap.isInitiator ? 'Initiator (Alice)' : 'Participant (Bob)';
+            
+            // Format addresses
+            const formatAddr = (addr) => addr ? `${addr.substring(0, 6)}...${addr.slice(-4)}` : '?';
+            const senderAddr = formatAddr(swap.sender);
+            const recipientAddr = swap.recipient && swap.recipient !== '0x0000000000000000000000000000000000000000' 
+                ? formatAddr(swap.recipient) : 'Any';
+            
+            // Role display with address
+            const roleIcon = swap.isInitiator ? 'fa-paper-plane' : 'fa-inbox';
+            const roleText = swap.isInitiator ? `Sender: ${senderAddr}` : `Receiver: ${recipientAddr}`;
             const roleColor = swap.isInitiator ? 'text-ether-green' : 'text-jstz-accent';
             
             // Chain info
@@ -4057,7 +4175,7 @@
                                 <i class="fa-solid ${statusInfo.icon} mr-1"></i>
                                 ${statusInfo.label}
                             </span>
-                            <span class="text-xs ${roleColor} font-medium">${role}</span>
+                            <span class="text-xs ${roleColor} font-medium font-mono"><i class="fa-solid ${roleIcon} mr-1"></i>${roleText}</span>
                         </div>
                         <div class="text-right">
                             <div class="text-lg font-bold text-white">${parseFloat(swap.amount).toFixed(4)} XTZ</div>
@@ -4081,8 +4199,8 @@
                         </div>
                         
                         <div class="flex items-center justify-between">
-                            <span class="text-gray-500">Counterparty:</span>
-                            <code class="text-gray-300 font-mono">${swap.isInitiator ? (swap.recipient?.substring(0, 8) || 'Any') : (swap.sender?.substring(0, 8) || '?')}...</code>
+                            <span class="text-gray-500">${swap.isInitiator ? 'To' : 'From'}:</span>
+                            <code class="text-gray-300 font-mono">${swap.isInitiator ? recipientAddr : senderAddr}</code>
                         </div>
                         
                         <div class="flex items-center justify-between">
@@ -4557,57 +4675,19 @@
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i>`;
             
-            // 2. Verify swap exists on Jstz
-            log('Verifying swap on Jstz...', 'warning');
-            const verification = await verifySwapOnJstz(hashLock);
-            
-            if (!verification.valid) {
-                log(`❌ ${verification.error}`, 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
-                return;
-            }
-            
-            const swap = verification.swap;
-            log(`✓ Swap found: ${swap.amount} XTZ`, 'success');
-            
-            // 3. Check if already claimed or refunded (Etherlink: OPEN=0, CLAIMED=1, EXPIRED=2)
-            if (swap.status === SwapState.CLAIMED || swap.status === 1) {
-                log('❌ Swap has already been claimed!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
-                return;
-            }
-            
-            if (swap.status === SwapState.EXPIRED || swap.status === 2) {
-                log('❌ Swap has already been refunded!', 'error');
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
-                return;
-            }
-            
-            // 4. Check timelock HAS expired (required for refund)
-            if (!swap.isExpired) {
-                const now = Math.floor(Date.now() / 1000);
-                const remaining = swap.expiration - now;
-                const mins = Math.floor(remaining / 60);
-                const secs = remaining % 60;
-                log(`❌ Cannot refund yet - timelock has not expired`, 'error');
-                log(`Time remaining: ${mins}m ${secs}s`, 'warning');
-                log(`Expires at: ${swap.expirationDate}`, 'info');
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
-                return;
-            }
-            log('✓ Timelock has expired, refund allowed', 'success');
-            
             // ========== EXECUTE REFUND ==========
+            // Note: The smart contract will verify:
+            // - Swap exists
+            // - Swap is not already claimed/refunded  
+            // - Timelock has expired
+            // - Caller is the original sender
             log('Executing refund on Jstz...', 'warning');
+            log(`HashLock: ${hashLock.substring(0, 16)}...`, 'info');
             
             try {
                 const response = await jstzRequest('POST', '/refund', {
                     hashlock: hashLock
-                });
+                }, { forceWallet: true });
                 
                 // Handle CLI fallback
                 if (response && response.cliRequired) {
@@ -4620,12 +4700,24 @@
                 }
                 
                 log('✅ Refund successful on Jstz!', 'success');
-                log(`${swap.amount} XTZ returned to your wallet`, 'success');
-                // hideClaimRefundSection(); // No longer needed
+                
+                // Parse response to get amount if available
+                if (response.message && response.message.data) {
+                    const amount = response.message.data.amount || 'Unknown';
+                    log(`${amount} XTZ returned to your wallet`, 'success');
+                } else {
+                    log('Funds returned to your wallet', 'success');
+                }
+                
+                addNotification('success', 'Refund Complete', 'Jstz refund successful', hashLock, 'jstz');
                 updateProgress(1);
+                
+                // Reload swaps
+                setTimeout(() => loadMySwaps(), 2000);
                 
             } catch (error) {
                 log(`❌ Refund error: ${error.message}`, 'error');
+                log('The swap may not exist, may have already been refunded, or timelock may not have expired yet.', 'warning');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
@@ -4732,7 +4824,7 @@
                 
                 log(`✅ Claimed on Etherlink!`, 'success');
                 logTx(tx.hash, '✅ Claim confirmed');
-                log(`Bob has received ${swap.amount} XTZ!`, 'success');
+                log(`Successfully received ${swap.amount} XTZ!`, 'success');
                 
                 updateProgress(4);
                 
