@@ -530,6 +530,9 @@
                                         <button id="verify-swap-btn" onclick="verifyAliceSwapDetails()" class="hidden px-3 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 text-xs font-bold whitespace-nowrap transition">
                                             <i class="fa-solid fa-magnifying-glass mr-1"></i> Verify
                                         </button>
+                                        <button id="verify-jstz-btn" onclick="verifyViaJstzWallet()" class="hidden px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 text-xs font-bold whitespace-nowrap transition animate-pulse">
+                                            <i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -958,7 +961,8 @@
             currentChainId: null, // Current network chain ID
             aliceSwapVerified: false, // Whether Alice's swap was verified in Join mode
             aliceSwapData: null, // Alice's swap data from verification
-            jstzBalance: null // Jstz balance for connected wallet
+            jstzBalance: null, // Jstz balance for connected wallet
+            pendingJstzVerifyHashlock: null // Hashlock pending verification via Jstz wallet
         };
 
         // Utils
@@ -1469,9 +1473,10 @@
          * @param options - Additional options:
          *   - requiresSignature: Whether to require wallet signature (default: true)
          *   - transferAmountMutez: Amount of tez to send in mutez (1 XTZ = 1,000,000 mutez)
+         *   - forceWallet: Force using wallet even for read operations (default: false)
          */
         async function jstzRequest(method, path, body = null, options = {}) {
-            const { requiresSignature = true, transferAmountMutez = 0 } = typeof options === 'boolean' 
+            const { requiresSignature = true, transferAmountMutez = 0, forceWallet = false } = typeof options === 'boolean' 
                 ? { requiresSignature: options } 
                 : options;
             
@@ -1483,8 +1488,8 @@
                 log(`💰 Sending ${transferAmountMutez} mutez (${transferAmountMutez / 1000000} XTZ)`, 'warning');
             }
             
-            // For read operations, try without signature first
-            if (!requiresSignature || path.startsWith('/swap/') || path === '/swaps') {
+            // For read operations, try without signature first (unless forceWallet is true)
+            if (!forceWallet && (!requiresSignature || path.startsWith('/swap/') || path === '/swaps')) {
                 log(`📖 Attempting read-only request...`, 'system');
                 // For reads, we'll just return null and let the UI handle it
                 // The user will need to check via CLI
@@ -1587,13 +1592,22 @@
                         
                         console.log('[JSTZ] SDK injection result inner:', inner);
                         
-                        // Parse response body
+                        // Parse response body (body is base64 encoded)
                         let returnedMessage = 'Success';
-                        if (typeof inner === 'object' && inner && 'body' in inner) {
+                        if (typeof inner === 'object' && inner && 'body' in inner && inner.body) {
                             try {
-                                returnedMessage = inner.body ? JSON.parse(decoder.decode(new Uint8Array(inner.body))) : 'No body';
+                                // Decode base64 to string
+                                const bodyString = atob(inner.body);
+                                console.log('[JSTZ] Body string:', bodyString);
+                                returnedMessage = JSON.parse(bodyString);
                             } catch (e) {
-                                returnedMessage = 'Response received';
+                                console.error('[JSTZ] Parse error:', e);
+                                // Try as Uint8Array if base64 decode fails
+                                try {
+                                    returnedMessage = inner.body ? JSON.parse(decoder.decode(new Uint8Array(inner.body))) : 'No body';
+                                } catch (e2) {
+                                    returnedMessage = { raw: inner.body };
+                                }
                             }
                         } else if (typeof inner === 'string') {
                             returnedMessage = inner;
@@ -1601,7 +1615,7 @@
                         
                         log(`✅ Jstz operation successful!`, 'success');
                         console.log('[JSTZ] Parsed response:', returnedMessage);
-                        return returnedMessage;
+                        return { success: true, message: returnedMessage };
                         
                     } catch (sdkError) {
                         console.error('[JSTZ] SDK injection error:', sdkError);
@@ -2151,9 +2165,11 @@
                 regenSecretBtn.style.display = 'block';
                 copyHashBtn.style.display = 'block';
                 
-                // Hide Verify button and Alice details in create mode
+                // Hide Verify buttons and Alice details in create mode
                 const verifyBtn = document.getElementById('verify-swap-btn');
                 if (verifyBtn) verifyBtn.classList.add('hidden');
+                const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+                if (verifyJstzBtn) verifyJstzBtn.classList.add('hidden');
                 const aliceDetails = document.getElementById('alice-swap-details');
                 if (aliceDetails) aliceDetails.classList.add('hidden');
                 
@@ -2196,12 +2212,21 @@
                 const verifyBtn = document.getElementById('verify-swap-btn');
                 if (verifyBtn) verifyBtn.classList.remove('hidden');
                 
+                // Hide Jstz verify button initially (shown only when direct verify fails)
+                const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+                if (verifyJstzBtn) {
+                    verifyJstzBtn.classList.add('hidden');
+                    verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify`;
+                    verifyJstzBtn.disabled = false;
+                }
+                
                 // Hide Alice swap details initially
                 const aliceDetails = document.getElementById('alice-swap-details');
                 if (aliceDetails) aliceDetails.classList.add('hidden');
                 
                 // Reset verification state
                 state.aliceSwapVerified = false;
+                state.pendingJstzVerifyHashlock = null;
                 
                 // Make Hash Input Editable
                 hashInput.readOnly = false;
@@ -3091,6 +3116,238 @@
             };
         }
         
+        // Try to verify swap on Jstz via direct API/KV read
+        async function verifySwapOnJstzDirect(hashLock) {
+            console.log('[VERIFY-DIRECT] Attempting direct Jstz swap verification:', hashLock);
+            
+            const contractAddress = CONFIG.jstz.contractAddress;
+            const rpcUrl = CONFIG.jstz.rpcUrl;
+            
+            // Try multiple methods to read the swap data
+            
+            // Method 1: Try the KV API directly (if available)
+            try {
+                const kvKey = hashLock.startsWith('0x') ? hashLock.slice(2) : hashLock;
+                const kvUrl = `${rpcUrl}/kv/${contractAddress}/${kvKey}`;
+                console.log('[VERIFY-DIRECT] Trying KV API:', kvUrl);
+                
+                const kvResponse = await fetch(kvUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (kvResponse.ok) {
+                    const kvData = await kvResponse.json();
+                    console.log('[VERIFY-DIRECT] KV response:', kvData);
+                    
+                    if (kvData) {
+                        const swap = typeof kvData === 'string' ? JSON.parse(kvData) : kvData;
+                        return { valid: true, swap };
+                    }
+                }
+            } catch (e) {
+                console.log('[VERIFY-DIRECT] KV API not available:', e.message);
+            }
+            
+            // Method 2: Try the smart function's /swap/:hashlock endpoint directly
+            try {
+                const swapUrl = `${rpcUrl}/run?uri=jstz://${contractAddress}/swap/${hashLock}`;
+                console.log('[VERIFY-DIRECT] Trying run endpoint:', swapUrl);
+                
+                const swapResponse = await fetch(swapUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (swapResponse.ok) {
+                    const result = await swapResponse.json();
+                    console.log('[VERIFY-DIRECT] Run response:', result);
+                    
+                    if (result.found && result.swap) {
+                        return { valid: true, swap: result.swap };
+                    }
+                }
+            } catch (e) {
+                console.log('[VERIFY-DIRECT] Run endpoint not available:', e.message);
+            }
+            
+            // Method 3: Try dashboard API
+            try {
+                const dashboardUrl = `https://privatenet.dashboard.jstz.info/api/smart-functions/${contractAddress}/kv`;
+                console.log('[VERIFY-DIRECT] Trying dashboard API:', dashboardUrl);
+                
+                const dashResponse = await fetch(dashboardUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (dashResponse.ok) {
+                    const kvData = await dashResponse.json();
+                    console.log('[VERIFY-DIRECT] Dashboard KV response:', kvData);
+                    
+                    // Look for the swap key
+                    const kvKey = hashLock.startsWith('0x') ? hashLock.slice(2) : hashLock;
+                    if (kvData && kvData[kvKey]) {
+                        const swap = typeof kvData[kvKey] === 'string' ? JSON.parse(kvData[kvKey]) : kvData[kvKey];
+                        return { valid: true, swap };
+                    }
+                }
+            } catch (e) {
+                console.log('[VERIFY-DIRECT] Dashboard API not available:', e.message);
+            }
+            
+            // All methods failed
+            console.log('[VERIFY-DIRECT] All direct verification methods failed');
+            return {
+                valid: false,
+                cannotVerify: true,
+                error: 'Could not verify Jstz swap directly',
+                swap: null
+            };
+        }
+        
+        // ============================================
+        // VERIFY VIA JSTZ WALLET (temporary connection)
+        // ============================================
+        
+        async function verifyViaJstzWallet() {
+            const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+            const aliceDetails = document.getElementById('alice-swap-details');
+            const actionBtn = document.getElementById('main-action-btn');
+            const hashLock = state.pendingJstzVerifyHashlock;
+            
+            if (!hashLock) {
+                log("❌ No hashlock to verify", 'error');
+                return;
+            }
+            
+            verifyJstzBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting...`;
+            verifyJstzBtn.disabled = true;
+            
+            log("🔐 Connecting to Jstz wallet for verification...", 'warning');
+            
+            try {
+                // Check if Jstz extension is installed
+                if (!isJstzExtensionInstalled()) {
+                    log("❌ Jstz wallet extension not detected", 'error');
+                    log(`<a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-blue-400 underline">Install Jstz Wallet Extension</a>`, 'info');
+                    
+                    // Fallback to CLI
+                    log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'</code>`, 'system');
+                    
+                    verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify`;
+                    verifyJstzBtn.disabled = false;
+                    return;
+                }
+                
+                log("📡 Requesting swap data from Jstz via wallet...", 'warning');
+                
+                // Call the smart function to get swap details (force wallet to bypass read-only check)
+                const result = await jstzRequest('POST', `/swap/${hashLock}`, {}, { forceWallet: true });
+                
+                console.log('[VERIFY-JSTZ] Result:', result);
+                
+                if (result.success && result.message) {
+                    let swapData = result.message;
+                    
+                    // Parse if string
+                    if (typeof swapData === 'string') {
+                        try {
+                            swapData = JSON.parse(swapData);
+                        } catch (e) {
+                            console.log('[VERIFY-JSTZ] Could not parse response:', swapData);
+                        }
+                    }
+                    
+                    // Check if swap was found
+                    if (swapData.found && swapData.swap) {
+                        const swap = swapData.swap;
+                        
+                        log(`✅ Alice's swap verified on Jstz!`, 'success');
+                        
+                        // Update UI with swap details
+                        const amountXtz = swap.amount || (swap.amountMutez ? swap.amountMutez / 1000000 : 0);
+                        document.getElementById('alice-swap-amount').textContent = `${amountXtz} XTZ`;
+                        
+                        // Calculate remaining time
+                        const now = Math.floor(Date.now() / 1000);
+                        const remaining = swap.expiration - now;
+                        if (remaining > 0) {
+                            const mins = Math.floor(remaining / 60);
+                            const secs = remaining % 60;
+                            document.getElementById('alice-swap-expiry').textContent = `${mins}m ${secs}s remaining`;
+                            log(`⏰ Expires in ${mins} minutes`, 'info');
+                        } else {
+                            document.getElementById('alice-swap-expiry').textContent = 'EXPIRED';
+                            document.getElementById('alice-swap-expiry').classList.add('text-red-400');
+                        }
+                        
+                        document.getElementById('alice-swap-sender').textContent = swap.sender ? 
+                            `${swap.sender.substring(0, 8)}...${swap.sender.substring(swap.sender.length - 6)}` : 'Unknown';
+                        document.getElementById('alice-swap-chain').textContent = 'Jstz';
+                        document.getElementById('alice-swap-status').textContent = swap.status || 'OPEN';
+                        document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400';
+                        
+                        // Store verified swap data
+                        state.aliceSwapVerified = true;
+                        state.aliceSwapData = swap;
+                        
+                        if (swap.status === 'OPEN' && remaining > 0) {
+                            // Enable match button
+                            actionBtn.innerHTML = `<span>Match Swap on Etherlink</span><i class="fa-solid fa-arrow-right"></i>`;
+                            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-ether-green text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
+                            actionBtn.disabled = false;
+                            
+                            // Auto-adjust timelock
+                            const suggestedTimelock = Math.max(5, Math.floor(remaining / 120));
+                            document.getElementById('timelock-input').value = suggestedTimelock;
+                            log(`⚙️ Suggested timelock: ${suggestedTimelock} minutes (half of Alice's remaining time)`, 'system');
+                            
+                            log(`💡 Now switch back to MetaMask/Etherlink to match the swap!`, 'success');
+                        } else {
+                            log(`❌ Cannot match: swap is ${swap.status}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
+                            actionBtn.disabled = true;
+                        }
+                        
+                        // Hide verify button, show success state
+                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-check mr-1"></i> Verified`;
+                        verifyJstzBtn.className = "hidden px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-bold whitespace-nowrap";
+                        verifyJstzBtn.disabled = true;
+                        
+                    } else if (swapData.found === false) {
+                        log(`❌ Swap not found on Jstz with this hashlock`, 'error');
+                        document.getElementById('alice-swap-status').textContent = 'NOT FOUND';
+                        document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400';
+                        
+                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
+                        verifyJstzBtn.disabled = false;
+                    } else {
+                        log(`⚠️ Unexpected response format`, 'warning');
+                        console.log('[VERIFY-JSTZ] Unexpected response:', swapData);
+                        
+                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
+                        verifyJstzBtn.disabled = false;
+                    }
+                } else {
+                    log(`❌ Failed to verify: ${result.error || 'Unknown error'}`, 'error');
+                    
+                    if (result.cliRequired) {
+                        // CLI modal already shown
+                    }
+                    
+                    verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
+                    verifyJstzBtn.disabled = false;
+                }
+                
+            } catch (error) {
+                console.error('[VERIFY-JSTZ] Error:', error);
+                log(`❌ Error verifying swap: ${error.message}`, 'error');
+                
+                verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
+                verifyJstzBtn.disabled = false;
+            }
+        }
+        
         // ============================================
         // VERIFY ALICE SWAP DETAILS (for Bob in Join mode)
         // ============================================
@@ -3123,24 +3380,90 @@
                     result = await verifySwapOnEtherlink(hashLock, SwapState.OPEN);
                     chain = 'Etherlink';
                 } else {
-                    // Bob on Etherlink, Alice on Jstz - can't verify via extension
-                    log("⚠️ Cannot auto-verify Jstz swap. Use CLI to verify:", 'warning');
-                    log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'</code>`, 'info');
+                    // Bob on Etherlink, Alice on Jstz - try direct HTTP read
+                    log("🔍 Attempting to verify Jstz swap via direct API...", 'warning');
                     
-                    // Show manual confirmation
+                    // Try to read swap data directly from Jstz
+                    const jstzResult = await verifySwapOnJstzDirect(hashLock);
+                    
+                    if (jstzResult.valid && jstzResult.swap) {
+                        // Successfully read swap data!
+                        const swap = jstzResult.swap;
+                        chain = 'Jstz';
+                        
+                        aliceDetails.classList.remove('hidden');
+                        
+                        // Display amount (could be in mutez or XTZ)
+                        const amountXtz = swap.amountXtz || (swap.amountMutez ? swap.amountMutez / 1000000 : swap.amount);
+                        document.getElementById('alice-swap-amount').textContent = `${amountXtz} XTZ`;
+                        
+                        // Calculate remaining time
+                        const now = Math.floor(Date.now() / 1000);
+                        const remaining = swap.expiration - now;
+                        if (remaining > 0) {
+                            const mins = Math.floor(remaining / 60);
+                            const secs = remaining % 60;
+                            document.getElementById('alice-swap-expiry').textContent = `${mins}m ${secs}s remaining`;
+                        } else {
+                            document.getElementById('alice-swap-expiry').textContent = 'EXPIRED';
+                            document.getElementById('alice-swap-expiry').classList.add('text-red-400');
+                        }
+                        
+                        document.getElementById('alice-swap-sender').textContent = swap.sender || 'Unknown';
+                        document.getElementById('alice-swap-chain').textContent = 'Jstz';
+                        document.getElementById('alice-swap-status').textContent = swap.status || 'OPEN';
+                        document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400';
+                        
+                        if (swap.status === 'OPEN' && remaining > 0) {
+                            state.aliceSwapVerified = true;
+                            state.aliceSwapData = swap;
+                            
+                            actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-ether-green text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
+                            actionBtn.disabled = false;
+                            
+                            log(`✅ Alice's swap verified on Jstz! Amount: ${amountXtz} XTZ`, 'success');
+                            log(`⏰ Expires in ${Math.floor(remaining / 60)} minutes`, 'info');
+                            
+                            // Auto-adjust timelock
+                            const suggestedTimelock = Math.max(5, Math.floor(remaining / 120));
+                            document.getElementById('timelock-input').value = suggestedTimelock;
+                            log(`⚙️ Auto-set your timelock to ${suggestedTimelock} minutes`, 'system');
+                        } else {
+                            log(`❌ Cannot match: swap is ${swap.status}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
+                            actionBtn.disabled = true;
+                        }
+                        
+                        verifyBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Verify`;
+                        verifyBtn.disabled = false;
+                        return;
+                    }
+                    
+                    // Fallback: couldn't read directly, show Jstz wallet button
+                    log("💡 Connect your Jstz wallet to verify Alice's swap", 'warning');
+                    
+                    // Store hashlock for later use
+                    state.pendingJstzVerifyHashlock = hashLock;
+                    
+                    // Show the "Connect Jstz to Verify" button
+                    const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+                    verifyJstzBtn.classList.remove('hidden');
+                    verifyBtn.classList.add('hidden');
+                    
+                    // Show placeholder details
                     aliceDetails.classList.remove('hidden');
-                    document.getElementById('alice-swap-amount').textContent = '? XTZ (verify via CLI)';
-                    document.getElementById('alice-swap-expiry').textContent = 'Unknown';
+                    document.getElementById('alice-swap-amount').textContent = '? XTZ';
+                    document.getElementById('alice-swap-expiry').textContent = 'Click "Connect Jstz" to verify';
                     document.getElementById('alice-swap-sender').textContent = 'Unknown';
                     document.getElementById('alice-swap-chain').textContent = 'Jstz';
-                    document.getElementById('alice-swap-status').textContent = 'UNVERIFIED';
-                    document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400';
+                    document.getElementById('alice-swap-status').textContent = 'PENDING VERIFICATION';
+                    document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400';
                     
-                    // Enable button but show warning
-                    state.aliceSwapVerified = 'manual';
-                    actionBtn.innerHTML = `<span>Match Swap (Unverified)</span><i class="fa-solid fa-triangle-exclamation"></i>`;
-                    actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-yellow-500/80 text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
-                    actionBtn.disabled = false;
+                    // Disable match button until verified
+                    state.aliceSwapVerified = false;
+                    actionBtn.innerHTML = `<span>Verify First</span><i class="fa-solid fa-lock"></i>`;
+                    actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-gray-600 text-gray-400 shadow-lg flex items-center justify-center gap-2 cursor-not-allowed";
+                    actionBtn.disabled = true;
                     
                     verifyBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Verify`;
                     verifyBtn.disabled = false;
