@@ -5,6 +5,10 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 
 🏆 **Built for the Jstz Hackathon**
 
+🌐 **Live Demo**: [https://atomic-swap-etherlink-hackathon.vercel.app](https://atomic-swap-etherlink-hackathon.vercel.app)
+
+---
+
 ## 📦 Deployed Contracts
 
 | Network | Contract | Address |
@@ -12,130 +16,202 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 | **Etherlink Testnet** | HTLC Solidity | `0x79826f6Ab82C24395123f8419E3aFb995d906bAd` |
 | **Jstz Privatenet** | HTLC Smart Function | `KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE` |
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
+## 🚀 Quick Start (5 minutes)
 
-- **Node.js 18+**
-- **MetaMask** with Etherlink Testnet configured
-- **Jstz CLI**: `npm i -g @jstz-dev/cli`
-- **Jstz Wallet Extension** (optional but recommended): [Download from GitHub](https://github.com/jstz-dev/dev-wallet/releases)
-- **Python 3** (for local server)
-
-### Jstz Wallet Extension (Recommended)
-
-For the best experience, install the Jstz Chrome extension wallet:
-
-1. Download the latest release from [jstz-dev/dev-wallet](https://github.com/jstz-dev/dev-wallet/releases)
-2. Unzip the downloaded file
-3. Go to `chrome://extensions/` in Chrome
-4. Enable "Developer mode"
-5. Click "Load unpacked" and select the unzipped folder
-6. Create or import an account in the extension
-
-With the extension installed, all Jstz transactions will be signed automatically through the wallet popup.
-
-### 1. Clone & Install
+### Step 0: Check Prerequisites
 
 ```bash
-git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
-cd atomic_swap_etherlink_hackathon
+# Check Node.js version (needs 18+)
+node --version
+# Should output: v18.x.x or higher
 
-# Install Etherlink contract dependencies
-cd contracts/etherlink
-npm install
-cd ../..
+# Check npm version
+npm --version
+# Should output: 8.x.x or higher
 ```
 
-### 2. Configure Jstz Network
+**Don't have Node.js?** Download it from [nodejs.org](https://nodejs.org/) (LTS version recommended)
+
+---
+
+### Step 1: Install Jstz CLI
 
 ```bash
+# Install globally
+npm install -g @jstz-dev/cli
+
+# Verify installation
+jstz --version
+```
+
+**Getting errors?**
+- On macOS/Linux, you might need `sudo npm install -g @jstz-dev/cli`
+- On Windows, run your terminal as Administrator
+- More details: [Jstz Installation Guide](https://jstz.tezos.com/installation)
+
+---
+
+### Step 2: Configure Jstz Network
+
+```bash
+# Add the privatenet network configuration
 jstz network add privatenet \
   --octez-node-rpc-endpoint https://privatenet.jstz.info \
   --jstz-node-endpoint https://privatenet.jstz.info
 ```
 
-### 3. Configure MetaMask
-
-Add Etherlink Testnet to MetaMask:
-- **Network Name**: Etherlink Testnet
-- **RPC URL**: `https://node.ghostnet.etherlink.com`
-- **Chain ID**: `128123`
-- **Symbol**: `XTZ`
-- **Explorer**: `https://testnet.explorer.etherlink.com`
-
-Get testnet XTZ: https://faucet.etherlink.com
-
-### 4. Start Frontend
-
+**Verify it works:**
 ```bash
-python3 -m http.server 8080
+jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/" -n privatenet -m POST -d '{}'
 ```
 
-Open http://localhost:8080
+Should output something like: `{"status":"healthy","swaps_count":...}`
 
 ---
 
-## 🧪 Test: Complete Atomic Swap
+### Step 3: Configure MetaMask
+
+1. Open MetaMask browser extension
+2. Click the network dropdown (top left)
+3. Click **"Add network"** → **"Add a network manually"**
+4. Enter these details:
+
+| Field | Value |
+|-------|-------|
+| Network Name | `Etherlink Testnet` |
+| RPC URL | `https://node.ghostnet.etherlink.com` |
+| Chain ID | `128123` |
+| Currency Symbol | `XTZ` |
+| Block Explorer | `https://testnet.explorer.etherlink.com` |
+
+5. Click **Save**
+
+**Get free testnet XTZ:** https://faucet.etherlink.com
+
+---
+
+### Step 4: Install Jstz Wallet Extension (Optional but Recommended)
+
+For signing Jstz transactions directly from the browser:
+
+1. Go to [jstz-dev/dev-wallet releases](https://github.com/jstz-dev/dev-wallet/releases)
+2. Download the latest `.zip` file
+3. Unzip it to a folder
+4. Open Chrome → `chrome://extensions/`
+5. Enable **"Developer mode"** (toggle in top right)
+6. Click **"Load unpacked"**
+7. Select the `apps/signer/dist` folder from the unzipped files
+8. The extension appears in your toolbar - click it to create an account
+
+**Without the extension:** You'll see CLI commands to copy/paste in your terminal.
+
+---
+
+### Step 5: Clone & Run
+
+```bash
+# Clone the repository
+git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
+cd atomic_swap_etherlink_hackathon
+
+# Start a local server (choose one):
+
+# Option A: Python 3
+python3 -m http.server 8080
+
+# Option B: Node.js (if you have npx)
+npx serve -p 8080
+
+# Option C: PHP
+php -S localhost:8080
+```
+
+**Open your browser:** http://localhost:8080
+
+---
+
+## 🧪 Complete Atomic Swap Test
 
 ### Scenario: Alice (Etherlink) ↔ Bob (Jstz)
 
-Alice wants to swap ETH for XTZ with Bob.
+**Alice** has XTZ on Etherlink and wants to exchange with **Bob** who has XTZ on Jstz.
 
 ---
 
-### Step 1: Alice Initiates on Etherlink (Frontend)
+### 📍 Step 1: Alice Initiates on Etherlink
 
-1. Open http://localhost:8080
-2. Click **"Connect Etherlink"** (MetaMask)
+**In the browser (http://localhost:8080):**
+
+1. Click **"Connect Etherlink"** → MetaMask opens → Confirm connection
+2. Make sure you're on **Etherlink Testnet** (the badge should be green)
 3. In the **"Initiate"** tab:
-   - Click **"Generate New"** to create secret/hash
-   - **Copy the Hash** 📋 (you'll need it)
-   - **Copy the Secret** 🔐 (keep it safe!)
-   - Enter amount (e.g., `0.01`)
-   - Click **"From Etherlink"**
-4. Confirm in MetaMask
-5. **Save the Hash displayed in the logs**
+   - Click **"Generate New"** to create a secret/hash pair
+   - **📋 COPY THE HASH** (share this with Bob)
+   - **🔐 COPY THE SECRET** (keep this private!)
+   - Enter amount: `0.01` (or any amount you want to swap)
+   - Set timelock: `60` minutes
+   - Click **"Initiate Swap"**
+4. MetaMask popup → Confirm the transaction
+5. Wait for confirmation (~10 seconds)
 
-Example output:
+**You should see in the logs:**
 ```
-Hash: 0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c
-Secret: 0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c
+🎉 SWAP INITIATED SUCCESSFULLY!
+📋 NEXT STEP:
+   Share this HASH with Bob:
+   0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c
 ```
+
+**⚠️ IMPORTANT: Save both the HASH and SECRET!**
 
 ---
 
-### Step 2: Bob Initiates on Jstz (CLI)
+### 📍 Step 2: Bob Locks Funds on Jstz
 
-Bob uses the **same hash** to lock XTZ on Jstz:
+**Bob receives the HASH from Alice and runs this in his terminal:**
 
 ```bash
-# Set variables
+# Replace with your actual hash from Step 1
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
-EXPIRATION=$(($(date +%s) + 3600))  # 1 hour from now
 
-# Bob locks 10 XTZ with the same hash
+# Calculate expiration (30 minutes from now - must be shorter than Alice's!)
+EXPIRATION=$(($(date +%s) + 1800))
+
+# Lock 10 XTZ with the same hash
 jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/initiate" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"recipient\":null,\"expiration\":$EXPIRATION,\"amount\":\"10\"}"
 ```
 
-Expected output:
+**Expected output:**
 ```json
 {
   "success": true,
   "event": "SwapInitiated",
-  "data": { "status": "OPEN", "amount": 10, ... }
+  "data": {
+    "hashlock": "0x7398c0867...",
+    "status": "OPEN",
+    "amount": 10
+  }
 }
+```
+
+**Verify the swap exists:**
+```bash
+jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/$HASH" \
+  -n privatenet -m POST -d '{}'
 ```
 
 ---
 
-### Step 3: Alice Claims on Jstz (Reveals Secret)
+### 📍 Step 3: Alice Claims on Jstz (Reveals Secret)
 
-Alice uses her secret to claim Bob's XTZ:
+**Alice uses her SECRET to claim Bob's XTZ:**
 
 ```bash
+# Use Alice's secret and the shared hash
 SECRET="0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c"
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 
@@ -144,42 +220,71 @@ jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/claim" \
   -d "{\"hashlock\":\"$HASH\",\"secret\":\"$SECRET\"}"
 ```
 
-Expected output:
+**Expected output:**
 ```json
 {
   "success": true,
   "event": "SwapClaimed",
-  "data": { "secret": "0x45bb7983...", ... }
+  "data": {
+    "hashlock": "0x7398c0867...",
+    "secret": "0x45bb7983...",
+    "status": "CLAIMED"
+  }
 }
 ```
 
-**⚠️ The secret is now PUBLIC!**
+**⚠️ The SECRET is now PUBLIC on-chain! Bob can see it.**
 
 ---
 
-### Step 4: Bob Claims on Etherlink (Frontend)
+### 📍 Step 4: Bob Claims on Etherlink
 
-Bob uses the revealed secret to claim Alice's ETH:
+**Bob uses the revealed SECRET to claim Alice's XTZ:**
+
+**In the browser:**
 
 1. Go to http://localhost:8080
-2. Go to **"Claim/Refund"** tab
-3. Enter:
-   - **Swap ID**: `0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c`
+2. Connect MetaMask (Etherlink)
+3. Go to **"Claim/Refund"** tab
+4. Enter:
+   - **Swap ID / Hash**: `0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c`
    - **Secret**: `0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c`
-4. Click **"Claim"**
-5. Confirm in MetaMask
+5. Click **"Claim"**
+6. Confirm in MetaMask
+
+**✅ Swap Complete!** Both parties have received their funds.
 
 ---
 
-### Verify Final Status
+### 📍 Verify Final Status
 
 ```bash
 # Check Jstz swap status
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c" \
+HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
+jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/swap/$HASH" \
   -n privatenet -m POST -d '{}'
 ```
 
-Should show `"status": "CLAIMED"` ✅
+Should show: `"status": "CLAIMED"` ✅
+
+---
+
+## ⏱️ What About Refunds?
+
+If the swap expires (timelock passes) and the other party didn't claim:
+
+**On Etherlink (browser):**
+1. Go to "Claim/Refund" tab
+2. Enter the Swap ID
+3. Click "Refund"
+
+**On Jstz (CLI):**
+```bash
+HASH="your_hash_here"
+jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/refund" \
+  -n privatenet -m POST \
+  -d "{\"hashlock\":\"$HASH\"}"
+```
 
 ---
 
@@ -192,57 +297,66 @@ Should show `"status": "CLAIMED"` ✅
 │                                                                 │
 │  1. Alice generates: SECRET → SHA256(SECRET) = HASH            │
 │                                                                 │
-│  2. Alice locks ETH on Etherlink with HASH                     │
+│  2. Alice locks XTZ on Etherlink with HASH (60 min timelock)   │
 │     └─ Funds locked until: Alice refunds OR Bob claims         │
 │                                                                 │
 │  3. Bob verifies Alice's swap, locks XTZ on Jstz with HASH     │
-│     └─ Funds locked until: Bob refunds OR Alice claims         │
+│     └─ IMPORTANT: Bob's timelock must be SHORTER (30 min)      │
 │                                                                 │
 │  4. Alice claims XTZ on Jstz by revealing SECRET               │
 │     └─ SECRET is now PUBLIC (visible on-chain)                 │
 │                                                                 │
-│  5. Bob uses revealed SECRET to claim ETH on Etherlink         │
+│  5. Bob uses revealed SECRET to claim XTZ on Etherlink         │
 │     └─ Swap complete! Both parties received funds              │
+│                                                                 │
+│  SAFETY: If anything goes wrong, both can refund after expiry  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔒 Security
+## 🔒 Security Features
 
-### Checks Implemented
-
-| Check | Etherlink | Jstz |
-|-------|-----------|------|
+| Security Check | Etherlink | Jstz |
+|----------------|-----------|------|
 | SHA-256(secret) == hashlock | ✅ | ✅ |
 | Swap exists | ✅ | ✅ |
-| Swap is OPEN | ✅ | ✅ |
-| Not expired (claim) | ✅ | ✅ |
-| Expired (refund) | ✅ | ✅ |
+| Swap is OPEN (not already claimed) | ✅ | ✅ |
+| Not expired (for claim) | ✅ | ✅ |
+| Expired (for refund) | ✅ | ✅ |
 | Sender authorization (refund) | ✅ | ✅ |
 | Recipient authorization (claim) | ✅ | ✅ |
 | Duplicate prevention | ✅ | ✅ |
 
-### Why SHA-256?
-
-Both Etherlink (Solidity) and Jstz use **SHA-256** for hash verification, ensuring the same secret works on both chains. This is critical for cross-chain atomic swaps.
+**Why SHA-256?** Both Etherlink (Solidity) and Jstz use SHA-256 for hash verification, ensuring the same secret works on both chains.
 
 ---
 
-## 🧪 Run Tests
+## 🛠️ Development Setup
 
-### Solidity Tests (12 tests)
+### Run Solidity Tests
 
 ```bash
 cd contracts/etherlink
+npm install
 npx hardhat test
 ```
 
-### Jstz Health Check
+All 12 tests should pass ✅
+
+### Deploy Your Own Contract
 
 ```bash
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/" -n privatenet -m POST -d '{}'
+cd contracts/etherlink
+npx hardhat run scripts/deploy.js --network etherlink_testnet
+```
+
+### Deploy Your Own Jstz Smart Function
+
+```bash
+cd contracts/jstz
+jstz deploy htlc.js -n privatenet
 ```
 
 ---
@@ -257,17 +371,45 @@ atomic_swap_etherlink_hackathon/
 │   │   └── htlc.js              # Jstz Smart Function (SHA-256)
 │   └── etherlink/
 │       ├── contracts/HTLC.sol   # Solidity Contract (SHA-256)
-│       ├── test/HTLC.test.js    # Unit tests
+│       ├── test/HTLC.test.js    # 12 unit tests
 │       └── scripts/deploy.js    # Deployment script
 └── README.md
 ```
 
 ---
 
+## 🐛 Troubleshooting
+
+### "jstz: command not found"
+```bash
+# Make sure npm global bin is in your PATH
+npm config get prefix
+# Add to your shell profile (~/.bashrc, ~/.zshrc):
+export PATH="$PATH:$(npm config get prefix)/bin"
+```
+
+### "Network privatenet not found"
+```bash
+jstz network add privatenet \
+  --octez-node-rpc-endpoint https://privatenet.jstz.info \
+  --jstz-node-endpoint https://privatenet.jstz.info
+```
+
+### MetaMask shows wrong network
+Click the network badge in the header to auto-switch to Etherlink Testnet.
+
+### "Insufficient funds"
+Get testnet XTZ at: https://faucet.etherlink.com
+
+### Transaction stuck/pending
+Wait a few seconds and refresh. Etherlink blocks are ~10 seconds.
+
+---
+
 ## 🏗️ Tech Stack
 
-- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript, ethers.js
-- **Etherlink**: Solidity 0.8.20, Hardhat
+- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript, ethers.js v5
+- **Etherlink**: Solidity 0.8.20, Hardhat, OpenZeppelin
 - **Jstz**: JavaScript Smart Functions, Kv storage
 - **Hash Algorithm**: SHA-256 (cross-chain compatible)
 
@@ -276,6 +418,16 @@ atomic_swap_etherlink_hackathon/
 ## 📄 License
 
 MIT License
+
+---
+
+## 🔗 Resources
+
+- [Jstz Documentation](https://jstz.tezos.com/)
+- [Jstz CLI Installation](https://jstz.tezos.com/installation)
+- [Etherlink Documentation](https://docs.etherlink.com/)
+- [Etherlink Faucet](https://faucet.etherlink.com)
+- [Etherlink Explorer](https://testnet.explorer.etherlink.com)
 
 ---
 
