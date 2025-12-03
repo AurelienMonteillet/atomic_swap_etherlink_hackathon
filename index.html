@@ -2142,21 +2142,21 @@
         };
         
         // Verify swap exists and is in correct state on Etherlink
+        // Uses read-only provider to avoid changing wallet connection state
         async function verifySwapOnEtherlink(swapId, expectedState = null) {
-            if (!state.contract) {
-                const connected = await connectEtherlink();
-                if (!connected) {
-                    return { valid: false, error: 'Could not connect to Etherlink' };
-                }
-            }
-            
-            if (!state.contract) {
-                return { valid: false, error: 'HTLC contract not available on this network' };
-            }
-            
             try {
-                console.log('[VERIFY] Checking swap on Etherlink:', swapId);
-                const swap = await state.contract.getSwap(swapId);
+                // Use read-only provider to check swap without connecting wallet
+                const readOnlyProvider = new ethers.providers.JsonRpcProvider(
+                    NETWORK_CONFIG[128123].rpcUrl // Etherlink Testnet
+                );
+                const readOnlyContract = new ethers.Contract(
+                    NETWORK_CONFIG[128123].htlcAddress,
+                    CONFIG.etherlink.abi,
+                    readOnlyProvider
+                );
+                
+                console.log('[VERIFY] Checking swap on Etherlink (read-only):', swapId);
+                const swap = await readOnlyContract.getSwap(swapId);
                 
                 console.log('[VERIFY] Swap data:', {
                     sender: swap.sender,
