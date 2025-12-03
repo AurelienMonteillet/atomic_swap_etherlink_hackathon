@@ -1,186 +1,268 @@
 # Etherlink x Jstz Atomic Swap
 
 A trustless atomic swap interface between **Etherlink** (EVM L2) and **Jstz** (Tezos Smart Rollup Layer). 
-Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (HTLC).
+Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (HTLC) with **SHA-256**.
 
 🏆 **Built for the Jstz Hackathon**
 
-## 🌐 Live Demo
+## 📦 Deployed Contracts
 
-- **Frontend**: http://localhost:8080 (local)
-- **Jstz Sandbox**: https://sandbox.jstz.info
-- **Etherlink Testnet**: https://node.ghostnet.etherlink.com
+| Network | Contract | Address |
+|---------|----------|---------|
+| **Etherlink Testnet** | HTLC Solidity | `0x79826f6Ab82C24395123f8419E3aFb995d906bAd` |
+| **Jstz Sandbox** | HTLC Smart Function | `KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb` |
 
-## 🚀 Features
-
-- ✅ **Real Smart Contracts**: HTLC deployed on both Etherlink (Solidity) and Jstz (JavaScript)
-- ✅ **Visual Flow**: Step-by-step tracker for the atomic swap lifecycle
-- ✅ **Dual Chain Support**: Swap between Etherlink and Jstz networks
-- ✅ **My Swaps Tab**: Auto-detect and track all your active swaps
-- ✅ **Security**: Comprehensive validation checks to prevent cheating
-- ✅ **Modern UI**: Dark mode, glassmorphism, and neon green accents
-- ✅ **Custom Modals**: Beautiful confirmation dialogs and transaction links
-
-## 📁 Project Structure
-
-```
-atomic_swap_etherlink_hackathon/
-├── index.html              # Frontend interface
-├── test.html               # Automated tests page
-├── test-scenarios.js       # E2E test scenarios
-├── contracts/
-│   ├── jstz/
-│   │   └── htlc.js         # Jstz Smart Function (HTLC)
-│   ├── etherlink/
-│   │   ├── contracts/
-│   │   │   └── HTLC.sol    # Solidity HTLC Contract
-│   │   ├── scripts/
-│   │   │   └── deploy.js   # Deployment script
-│   │   ├── test/
-│   │   │   └── HTLC.test.js
-│   │   ├── hardhat.config.js
-│   │   └── package.json
-│   └── README.md           # Contracts documentation
-└── README.md
-```
-
-## 🛠️ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- MetaMask wallet with Etherlink Testnet configured
-- Jstz CLI (`npm i -g @jstz-dev/cli`)
+- **Node.js 18+**
+- **MetaMask** with Etherlink Testnet configured
+- **Jstz CLI**: `npm i -g @jstz-dev/cli`
+- **Python 3** (for local server)
 
-### Installation
+### 1. Clone & Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
 cd atomic_swap_etherlink_hackathon
 
-# Install Etherlink contract dependencies (for local testing)
+# Install Etherlink contract dependencies
 cd contracts/etherlink
 npm install
+cd ../..
 ```
 
-### Running the App
-
-**Option 1: Use Deployed Contracts (Recommended)**
+### 2. Configure Jstz Network
 
 ```bash
-# From project root
-python3 -m http.server 8080
-
-# Open http://localhost:8080
+jstz network add sandbox \
+  --octez-node-rpc-endpoint https://sandbox.jstz.info \
+  --jstz-node-endpoint https://sandbox.jstz.info
 ```
 
-The frontend is already configured to use:
-- **Etherlink Testnet**: Contract `0x32a57e30880174145cb002f526487cb74d0fcf46`
-- **Jstz Sandbox**: Smart Function `KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59`
+### 3. Configure MetaMask
 
-**Option 2: Local Development**
+Add Etherlink Testnet to MetaMask:
+- **Network Name**: Etherlink Testnet
+- **RPC URL**: `https://node.ghostnet.etherlink.com`
+- **Chain ID**: `128123`
+- **Symbol**: `XTZ`
+- **Explorer**: `https://testnet.explorer.etherlink.com`
+
+Get testnet XTZ: https://faucet.etherlink.com
+
+### 4. Start Frontend
 
 ```bash
-# 1. Start Hardhat local node
-cd contracts/etherlink
-npx hardhat node
-
-# 2. Deploy contract (in another terminal)
-npx hardhat run scripts/deploy.js --network localhost
-
-# 3. Start frontend (from project root)
 python3 -m http.server 8080
 ```
 
-## 📝 Deployed Contract Addresses
+Open http://localhost:8080
 
-### Production (Public Networks)
+---
 
-| Network | Contract Type | Address |
-|---------|--------------|---------|
-| **Etherlink Testnet** | HTLC Solidity | `0x32a57e30880174145cb002f526487cb74d0fcf46` |
-| **Jstz Sandbox** | HTLC Smart Function | `KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59` |
+## 🧪 Test: Complete Atomic Swap
 
-### Network Configuration
+### Scenario: Alice (Etherlink) ↔ Bob (Jstz)
 
-| Network | Chain ID | RPC URL |
-|---------|----------|---------|
-| Etherlink Testnet | 128123 | https://node.ghostnet.etherlink.com |
-| Jstz Sandbox | - | https://sandbox.jstz.info |
+Alice wants to swap ETH for XTZ with Bob.
 
-## 🔄 Atomic Swap Flow
+---
+
+### Step 1: Alice Initiates on Etherlink (Frontend)
+
+1. Open http://localhost:8080
+2. Click **"Connect Etherlink"** (MetaMask)
+3. In the **"Initiate"** tab:
+   - Click **"Generate New"** to create secret/hash
+   - **Copy the Hash** 📋 (you'll need it)
+   - **Copy the Secret** 🔐 (keep it safe!)
+   - Enter amount (e.g., `0.01`)
+   - Click **"From Etherlink"**
+4. Confirm in MetaMask
+5. **Save the Hash displayed in the logs**
+
+Example output:
+```
+Hash: 0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c
+Secret: 0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c
+```
+
+---
+
+### Step 2: Bob Initiates on Jstz (CLI)
+
+Bob uses the **same hash** to lock XTZ on Jstz:
+
+```bash
+# Set variables
+HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
+EXPIRATION=$(($(date +%s) + 3600))  # 1 hour from now
+
+# Bob locks 10 XTZ with the same hash
+jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/initiate" \
+  -n sandbox -m POST \
+  -d "{\"hashlock\":\"$HASH\",\"recipient\":null,\"expiration\":$EXPIRATION,\"amount\":\"10\"}"
+```
+
+Expected output:
+```json
+{
+  "success": true,
+  "event": "SwapInitiated",
+  "data": { "status": "OPEN", "amount": 10, ... }
+}
+```
+
+---
+
+### Step 3: Alice Claims on Jstz (Reveals Secret)
+
+Alice uses her secret to claim Bob's XTZ:
+
+```bash
+SECRET="0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c"
+HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
+
+jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/claim" \
+  -n sandbox -m POST \
+  -d "{\"hashlock\":\"$HASH\",\"secret\":\"$SECRET\"}"
+```
+
+Expected output:
+```json
+{
+  "success": true,
+  "event": "SwapClaimed",
+  "data": { "secret": "0x45bb7983...", ... }
+}
+```
+
+**⚠️ The secret is now PUBLIC!**
+
+---
+
+### Step 4: Bob Claims on Etherlink (Frontend)
+
+Bob uses the revealed secret to claim Alice's ETH:
+
+1. Go to http://localhost:8080
+2. Go to **"Claim/Refund"** tab
+3. Enter:
+   - **Swap ID**: `0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c`
+   - **Secret**: `0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c`
+4. Click **"Claim"**
+5. Confirm in MetaMask
+
+---
+
+### Verify Final Status
+
+```bash
+# Check Jstz swap status
+jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/swap/0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c" \
+  -n sandbox -m POST -d '{}'
+```
+
+Should show `"status": "CLAIMED"` ✅
+
+---
+
+## 🔄 How Atomic Swaps Work
 
 ```
-1. Alice generates secret → calculates hashlock (keccak256)
-2. Alice locks ETH on Etherlink (initiateSwap)
-3. Bob verifies hashlock, locks XTZ on Jstz (POST /initiate)
-4. Alice claims XTZ on Jstz (reveals secret via POST /claim)
-5. Bob uses revealed secret to claim ETH on Etherlink (claimSwap)
+┌─────────────────────────────────────────────────────────────────┐
+│                     ATOMIC SWAP FLOW                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Alice generates: SECRET → SHA256(SECRET) = HASH            │
+│                                                                 │
+│  2. Alice locks ETH on Etherlink with HASH                     │
+│     └─ Funds locked until: Alice refunds OR Bob claims         │
+│                                                                 │
+│  3. Bob verifies Alice's swap, locks XTZ on Jstz with HASH     │
+│     └─ Funds locked until: Bob refunds OR Alice claims         │
+│                                                                 │
+│  4. Alice claims XTZ on Jstz by revealing SECRET               │
+│     └─ SECRET is now PUBLIC (visible on-chain)                 │
+│                                                                 │
+│  5. Bob uses revealed SECRET to claim ETH on Etherlink         │
+│     └─ Swap complete! Both parties received funds              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Security Checks
+---
 
-- ✅ Swap existence verification before claim/refund
-- ✅ Hashlock validation (secret must match)
-- ✅ Timelock validation (Bob's must be shorter than Alice's)
-- ✅ Expiration checks (claim before expiry, refund after)
-- ✅ Sender authorization for refunds
-- ✅ Duplicate swap prevention
+## 🔒 Security
 
-## 🧪 Testing
+### Checks Implemented
 
-### Hardhat Unit Tests (12 tests)
+| Check | Etherlink | Jstz |
+|-------|-----------|------|
+| SHA-256(secret) == hashlock | ✅ | ✅ |
+| Swap exists | ✅ | ✅ |
+| Swap is OPEN | ✅ | ✅ |
+| Not expired (claim) | ✅ | ✅ |
+| Expired (refund) | ✅ | ✅ |
+| Sender authorization (refund) | ✅ | ✅ |
+| Recipient authorization (claim) | ✅ | ✅ |
+| Duplicate prevention | ✅ | ✅ |
+
+### Why SHA-256?
+
+Both Etherlink (Solidity) and Jstz use **SHA-256** for hash verification, ensuring the same secret works on both chains. This is critical for cross-chain atomic swaps.
+
+---
+
+## 🧪 Run Tests
+
+### Solidity Tests (12 tests)
+
 ```bash
 cd contracts/etherlink
 npx hardhat test
 ```
 
-### Jstz Smart Function Tests
+### Jstz Health Check
+
 ```bash
-# Configure sandbox network
-jstz network add sandbox --octez-node-rpc-endpoint https://sandbox.jstz.info --jstz-node-endpoint https://sandbox.jstz.info
-
-# Test health endpoint
-jstz run "jstz://KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59/" -n sandbox -m POST -d '{}'
-
-# Test initiate
-jstz run "jstz://KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59/initiate" -n sandbox -m POST -d '{"hashlock":"0x123...","recipient":"tz1...","expiration":1234567890,"amount":"10"}'
+jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/" -n sandbox -m POST -d '{}'
 ```
-
-## 🏗️ Tech Stack
-
-- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript
-- **Etherlink**: Solidity 0.8.20, Hardhat, ethers.js
-- **Jstz**: JavaScript Smart Functions, Kv persistent storage
-- **Libraries**: ethers.js v6, crypto-js
-
-## 📱 Wallet Setup
-
-### MetaMask (Etherlink)
-
-Add Etherlink Testnet to MetaMask:
-- **Network Name**: Etherlink Testnet
-- **RPC URL**: https://node.ghostnet.etherlink.com
-- **Chain ID**: 128123
-- **Symbol**: XTZ
-- **Explorer**: https://testnet.explorer.etherlink.com
-
-### Jstz Wallet
-
-Use the Jstz CLI to interact with the sandbox:
-```bash
-jstz whoami -n sandbox
-```
-
-## 📄 License
-
-MIT License - see LICENSE file
-
-## 🤝 Contributing
-
-This project was built for the Jstz Hackathon. Contributions welcome!
 
 ---
 
-**Made with ❤️ by Aurélien Monteillet**
+## 📁 Project Structure
+
+```
+atomic_swap_etherlink_hackathon/
+├── index.html                    # Frontend interface
+├── contracts/
+│   ├── jstz/
+│   │   └── htlc.js              # Jstz Smart Function (SHA-256)
+│   └── etherlink/
+│       ├── contracts/HTLC.sol   # Solidity Contract (SHA-256)
+│       ├── test/HTLC.test.js    # Unit tests
+│       └── scripts/deploy.js    # Deployment script
+└── README.md
+```
+
+---
+
+## 🏗️ Tech Stack
+
+- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript, ethers.js
+- **Etherlink**: Solidity 0.8.20, Hardhat
+- **Jstz**: JavaScript Smart Functions, Kv storage
+- **Hash Algorithm**: SHA-256 (cross-chain compatible)
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+**Made with ❤️ for the Jstz Hackathon**

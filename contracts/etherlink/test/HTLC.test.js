@@ -19,8 +19,8 @@ describe("HTLC Contract", function () {
     htlc = await HTLC.deploy();
     await htlc.waitForDeployment();
     
-    // Generate hashlock from secret
-    hashLock = ethers.keccak256(secret);
+    // Generate hashlock from secret using SHA-256 (cross-chain compatible)
+    hashLock = ethers.sha256(secret);
   });
 
   describe("Deployment", function () {
@@ -105,7 +105,7 @@ describe("HTLC Contract", function () {
     it("Should allow anyone to claim if recipient is address(0)", async function () {
       // Create new swap with no specific recipient
       const newSecret = ethers.toUtf8Bytes("another_secret");
-      const newHashLock = ethers.keccak256(newSecret);
+      const newHashLock = ethers.sha256(newSecret);
       const amount = ethers.parseEther("0.5");
       const expiration = Math.floor(Date.now() / 1000) + 3600;
       

@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 /**
  * @title HTLC - Hashed Timelock Contract for Atomic Swaps
  * @notice This contract enables trustless cross-chain swaps between Etherlink and Jstz
- * @dev Uses keccak256 for hashlock verification
+ * @dev Uses SHA-256 for hashlock verification (cross-chain compatible with Jstz)
  */
 contract HTLC {
     address private immutable contractOwner;
@@ -83,7 +83,7 @@ contract HTLC {
     /**
      * @notice Initiate a new atomic swap
      * @param recipient The address that can claim the funds (use address(0) for open swaps)
-     * @param hashLock The keccak256 hash of the secret
+     * @param hashLock The SHA-256 hash of the secret
      * @param expiration Unix timestamp when the swap expires
      * @return swapId The unique identifier for this swap (same as hashLock)
      */
@@ -139,8 +139,8 @@ contract HTLC {
     {
         SwapDetails storage swap = swaps[swapId];
         
-        // Verify the secret
-        if (keccak256(secret) != swap.hashLock) revert IncorrectHashLock();
+        // Verify the secret using SHA-256 (cross-chain compatible)
+        if (sha256(secret) != swap.hashLock) revert IncorrectHashLock();
         
         // Update status before transfer (reentrancy protection)
         swap.status = SwapStatus.CLAIMED;

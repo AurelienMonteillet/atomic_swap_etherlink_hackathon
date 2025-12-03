@@ -588,11 +588,11 @@
                 htlcAddress: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0',
                 explorer: null
             },
-            // Etherlink Testnet (Ghostnet)
+            // Etherlink Testnet (Ghostnet) - SHA-256 compatible
             128123: {
                 name: 'Etherlink Testnet',
                 rpcUrl: 'https://node.ghostnet.etherlink.com',
-                htlcAddress: '0x32a57e30880174145cb002f526487Cb74d0FCF46',
+                htlcAddress: '0x79826f6Ab82C24395123f8419E3aFb995d906bAd',
                 explorer: 'https://testnet.explorer.etherlink.com'
             },
             // Etherlink Mainnet
@@ -630,7 +630,7 @@
                 rpcUrl: 'https://sandbox.jstz.info',
                 network: 'sandbox',
                 functionAddress: 'jstz://htlc/',
-                contractAddress: 'KT1CAPGVNacQv6qiyrjhj6qjXDECsXZeSv59'
+                contractAddress: 'KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb'
             }
         };
 
@@ -732,16 +732,28 @@
             term.scrollTop = term.scrollHeight;
         };
 
+        // Helper: Log transaction with explorer link
+        const logTx = (txHash, message = 'Transaction') => {
+            const networkConfig = NETWORK_CONFIG[state.currentChainId];
+            const explorer = networkConfig?.explorer;
+            if (explorer) {
+                const txUrl = `${explorer}/tx/${txHash}`;
+                log(`${message}: <a href="${txUrl}" target="_blank" class="text-ether-green hover:underline">${txHash.substring(0, 18)}... 🔗</a>`, 'success');
+            } else {
+                log(`${message}: ${txHash}`, 'success');
+            }
+        };
+
         document.getElementById('login-time').innerText = new Date().toDateString();
 
-        // Generate secret using ethers.js keccak256 for compatibility
+        // Generate secret using SHA-256 for cross-chain compatibility (Etherlink + Jstz)
         function generateNewSecret() {
             // Generate 32 random bytes as secret
             const randomBytes = ethers.utils.randomBytes(32);
             const secret = ethers.utils.hexlify(randomBytes);
             
-            // Hash using keccak256 (same as Solidity)
-            const hash = ethers.utils.keccak256(randomBytes);
+            // Hash using SHA-256 (cross-chain compatible with Solidity and Jstz)
+            const hash = ethers.utils.sha256(randomBytes);
             
             state.secret = secret;
             state.secretBytes = randomBytes;
@@ -1673,15 +1685,15 @@
                     { value: amountWei }
                 );
 
-                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
+                logTx(tx.hash, '📤 Transaction sent');
                 
                 const receipt = await tx.wait();
                 
                 state.currentSwapId = state.hash;
                 
                 log(`✅ Swap initiated on Etherlink!`, 'success');
-                log(`Contract: ${CONFIG.etherlink.contractAddress.substring(0, 10)}...`, 'success');
-                log(`SwapId: ${state.currentSwapId.substring(0, 18)}...`, 'success');
+                logTx(receipt.hash || tx.hash, '✅ Confirmed');
+                log(`SwapId: ${state.currentSwapId.substring(0, 18)}...`, 'info');
                 log(`Funds Locked: ${amount} ETH`, 'success');
                 
                 updateProgress(2);
@@ -2095,13 +2107,13 @@
             return /^0x[a-fA-F0-9]{64}$/.test(hashLock);
         }
         
-        // Validate secret matches hashlock
+        // Validate secret matches hashlock using SHA-256 (cross-chain compatible)
         function verifySecretMatchesHash(secret, hashLock) {
             if (!secret || !hashLock) return false;
             try {
-                const computedHash = ethers.utils.keccak256(secret);
+                const computedHash = ethers.utils.sha256(secret);
                 const matches = computedHash.toLowerCase() === hashLock.toLowerCase();
-                console.log('[VERIFY] Secret verification:', {
+                console.log('[VERIFY] Secret verification (SHA-256):', {
                     secret: secret.substring(0, 18) + '...',
                     computedHash,
                     expectedHash: hashLock,
@@ -2481,19 +2493,17 @@
                 log(`Refunding swap ${swapId.substring(0, 12)}...`, 'info');
                 
                 const tx = await state.contract.refundSwap(swapId);
-                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'info');
+                logTx(tx.hash, '📤 Transaction sent');
                 
                 const receipt = await tx.wait();
                 log(`✅ Refund successful!`, 'success');
+                logTx(tx.hash, '✅ Refund confirmed');
                 log(`${amount} XTZ returned to your wallet`, 'success');
                 
-                // Get explorer URL for the network
+                // Show success modal with link
                 const networkConfig = NETWORK_CONFIG[state.currentChainId];
                 if (networkConfig?.explorer) {
                     const txUrl = `${networkConfig.explorer}/tx/${tx.hash}`;
-                    log(`🔗 View transaction: ${txUrl}`, 'system');
-                    
-                    // Show success modal with link
                     showSuccessNotification(amount, tx.hash, txUrl);
                 }
                 
@@ -2719,7 +2729,7 @@
                 log(`Swap ID: ${swapId.substring(0, 18)}...`, 'info');
                 
                 const tx = await state.contract.refundSwap(swapId);
-                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
+                logTx(tx.hash, '📤 Transaction sent');
                 
                 const receipt = await tx.wait();
                 
@@ -2728,6 +2738,7 @@
                 }
                 
                 log('✅ Refund successful on Etherlink!', 'success');
+                logTx(tx.hash, '✅ Refund confirmed');
                 log(`${swap.amount} XTZ returned to your wallet`, 'success');
                 
                 // hideClaimRefundSection(); // No longer needed in redeem tab
@@ -2924,7 +2935,7 @@
                 
                 const tx = await state.contract.claimSwap(swapId, secretBytes);
 
-                log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
+                logTx(tx.hash, '📤 Transaction sent');
                 
                 const receipt = await tx.wait();
                 
@@ -2934,8 +2945,8 @@
                 }
                 
                 log(`✅ Claimed on Etherlink!`, 'success');
+                logTx(tx.hash, '✅ Claim confirmed');
                 log(`Bob has received ${swap.amount} XTZ!`, 'success');
-                log(`Transaction: ${tx.hash}`, 'system');
                 
                 updateProgress(4);
                 
