@@ -20,58 +20,15 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 
 ## 🚀 Quick Start (5 minutes)
 
-### Step 0: Check Prerequisites
+### Step 1: Open the App
 
-```bash
-# Check Node.js version (needs 18+)
-node --version
-# Should output: v18.x.x or higher
+**👉 Go to: [https://atomic-swap-etherlink-hackathon.vercel.app](https://atomic-swap-etherlink-hackathon.vercel.app)**
 
-# Check npm version
-npm --version
-# Should output: 8.x.x or higher
-```
-
-**Don't have Node.js?** Download it from [nodejs.org](https://nodejs.org/) (LTS version recommended)
+That's it! The frontend is already deployed and ready to use.
 
 ---
 
-### Step 1: Install Jstz CLI
-
-```bash
-# Install globally
-npm install -g @jstz-dev/cli
-
-# Verify installation
-jstz --version
-```
-
-**Getting errors?**
-- On macOS/Linux, you might need `sudo npm install -g @jstz-dev/cli`
-- On Windows, run your terminal as Administrator
-- More details: [Jstz Installation Guide](https://jstz.tezos.com/installation)
-
----
-
-### Step 2: Configure Jstz Network
-
-```bash
-# Add the privatenet network configuration
-jstz network add privatenet \
-  --octez-node-rpc-endpoint https://privatenet.jstz.info \
-  --jstz-node-endpoint https://privatenet.jstz.info
-```
-
-**Verify it works:**
-```bash
-jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/" -n privatenet -m POST -d '{}'
-```
-
-Should output something like: `{"status":"healthy","swaps_count":...}`
-
----
-
-### Step 3: Configure MetaMask
+### Step 2: Configure MetaMask (for Etherlink)
 
 1. Open MetaMask browser extension
 2. Click the network dropdown (top left)
@@ -92,9 +49,47 @@ Should output something like: `{"status":"healthy","swaps_count":...}`
 
 ---
 
-### Step 4: Install Jstz Wallet Extension (Optional but Recommended)
+### Step 3: Install Jstz CLI (for Jstz transactions)
 
-For signing Jstz transactions directly from the browser:
+```bash
+# Check you have Node.js 18+
+node --version
+
+# Install Jstz CLI globally
+npm install -g @jstz-dev/cli
+
+# Verify installation
+jstz --version
+```
+
+**Getting errors?**
+- On macOS/Linux, you might need `sudo npm install -g @jstz-dev/cli`
+- On Windows, run your terminal as Administrator
+- More details: [Jstz Installation Guide](https://jstz.tezos.com/installation)
+
+---
+
+### Step 4: Configure Jstz Network
+
+```bash
+# Add the privatenet network configuration
+jstz network add privatenet \
+  --octez-node-rpc-endpoint https://privatenet.jstz.info \
+  --jstz-node-endpoint https://privatenet.jstz.info
+```
+
+**Verify it works:**
+```bash
+jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/" -n privatenet -m POST -d '{}'
+```
+
+Should output something like: `{"status":"healthy","swaps_count":...}`
+
+---
+
+### Step 5 (Optional): Install Jstz Wallet Extension
+
+For signing Jstz transactions directly from the browser instead of CLI:
 
 1. Go to [jstz-dev/dev-wallet releases](https://github.com/jstz-dev/dev-wallet/releases)
 2. Download the latest `.zip` file
@@ -109,26 +104,9 @@ For signing Jstz transactions directly from the browser:
 
 ---
 
-### Step 5: Clone & Run
+### ✅ You're ready! 
 
-```bash
-# Clone the repository
-git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
-cd atomic_swap_etherlink_hackathon
-
-# Start a local server (choose one):
-
-# Option A: Python 3
-python3 -m http.server 8080
-
-# Option B: Node.js (if you have npx)
-npx serve -p 8080
-
-# Option C: PHP
-php -S localhost:8080
-```
-
-**Open your browser:** http://localhost:8080
+Go to [https://atomic-swap-etherlink-hackathon.vercel.app](https://atomic-swap-etherlink-hackathon.vercel.app) and start swapping!
 
 ---
 
@@ -333,7 +311,30 @@ jstz run "jstz://KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE/refund" \
 
 ---
 
-## 🛠️ Development Setup
+## 🛠️ Development Setup (Run Locally)
+
+Want to run the project locally instead of using Vercel? Here's how:
+
+### Clone & Run Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon.git
+cd atomic_swap_etherlink_hackathon
+
+# Start a local server (choose one):
+
+# Option A: Python 3
+python3 -m http.server 8080
+
+# Option B: Node.js
+npx serve -p 8080
+
+# Option C: PHP
+php -S localhost:8080
+```
+
+Open http://localhost:8080 in your browser.
 
 ### Run Solidity Tests
 
