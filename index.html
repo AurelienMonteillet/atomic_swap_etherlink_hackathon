@@ -346,6 +346,27 @@
                         <div id="network-dot" class="w-2 h-2 rounded-full bg-gray-500"></div>
                         <span id="network-name" class="text-xs text-gray-400">Not Connected</span>
                     </div>
+                    
+                    <!-- Notification Bell -->
+                    <div id="notification-bell" class="relative cursor-pointer p-2 rounded-lg hover:bg-white/10 transition" onclick="toggleNotifications()" title="Notifications">
+                        <i class="fa-solid fa-bell text-gray-400 hover:text-white transition"></i>
+                        <span id="notification-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">0</span>
+                        
+                        <!-- Notification Dropdown -->
+                        <div id="notification-dropdown" class="hidden absolute right-0 top-full mt-2 w-80 bg-ether-dark border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                            <div class="p-3 border-b border-white/10 flex items-center justify-between">
+                                <span class="text-sm font-bold text-white"><i class="fa-solid fa-bell mr-2"></i>Notifications</span>
+                                <button onclick="clearAllNotifications(event)" class="text-xs text-gray-400 hover:text-white">Clear all</button>
+                            </div>
+                            <div id="notification-list" class="max-h-64 overflow-y-auto">
+                                <div class="p-4 text-center text-gray-500 text-sm">
+                                    <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+                                    No notifications yet
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <button id="wallet-etherlink" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-brands fa-ethereum text-ether-green"></i>
                         <span id="wallet-etherlink-text">Connect Etherlink</span>
@@ -962,8 +983,158 @@
             aliceSwapVerified: false, // Whether Alice's swap was verified in Join mode
             aliceSwapData: null, // Alice's swap data from verification
             jstzBalance: null, // Jstz balance for connected wallet
-            pendingJstzVerifyHashlock: null // Hashlock pending verification via Jstz wallet
+            pendingJstzVerifyHashlock: null, // Hashlock pending verification via Jstz wallet
+            notifications: [], // Notification list
+            jstzSwaps: [], // Swaps on Jstz
+            notificationCheckInterval: null // Interval for checking notifications
         };
+
+        // ============================================
+        // NOTIFICATION SYSTEM
+        // ============================================
+        
+        function toggleNotifications() {
+            const dropdown = document.getElementById('notification-dropdown');
+            dropdown.classList.toggle('hidden');
+        }
+        
+        function addNotification(type, title, message, swapId = null, chain = 'etherlink') {
+            const notification = {
+                id: Date.now(),
+                type, // 'warning', 'success', 'error', 'info'
+                title,
+                message,
+                swapId,
+                chain,
+                timestamp: Date.now(),
+                read: false
+            };
+            
+            state.notifications.unshift(notification);
+            updateNotificationUI();
+            
+            // Also log to terminal
+            log(`🔔 ${title}: ${message}`, type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'info');
+        }
+        
+        function updateNotificationUI() {
+            const badge = document.getElementById('notification-badge');
+            const list = document.getElementById('notification-list');
+            const unreadCount = state.notifications.filter(n => !n.read).length;
+            
+            // Update badge
+            if (unreadCount > 0) {
+                badge.classList.remove('hidden');
+                badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+            } else {
+                badge.classList.add('hidden');
+            }
+            
+            // Update list
+            if (state.notifications.length === 0) {
+                list.innerHTML = `
+                    <div class="p-4 text-center text-gray-500 text-sm">
+                        <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+                        No notifications yet
+                    </div>
+                `;
+            } else {
+                list.innerHTML = state.notifications.slice(0, 10).map(n => {
+                    const timeAgo = getTimeAgo(n.timestamp);
+                    const iconClass = n.type === 'warning' ? 'fa-triangle-exclamation text-yellow-400' :
+                                     n.type === 'error' ? 'fa-circle-xmark text-red-400' :
+                                     n.type === 'success' ? 'fa-circle-check text-green-400' :
+                                     'fa-circle-info text-blue-400';
+                    const bgClass = n.read ? 'bg-transparent' : 'bg-white/5';
+                    const chainBadge = n.chain === 'jstz' ? 
+                        '<span class="px-1.5 py-0.5 rounded text-[9px] bg-jstz-accent/20 text-jstz-accent">Jstz</span>' :
+                        '<span class="px-1.5 py-0.5 rounded text-[9px] bg-ether-green/20 text-ether-green">Etherlink</span>';
+                    
+                    return `
+                        <div class="p-3 border-b border-white/5 ${bgClass} hover:bg-white/10 transition cursor-pointer" onclick="markNotificationRead(${n.id})">
+                            <div class="flex items-start gap-2">
+                                <i class="fa-solid ${iconClass} mt-0.5"></i>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-xs font-bold text-white truncate">${n.title}</span>
+                                        ${chainBadge}
+                                    </div>
+                                    <p class="text-xs text-gray-400 line-clamp-2">${n.message}</p>
+                                    <span class="text-[10px] text-gray-500 mt-1 block">${timeAgo}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        function markNotificationRead(id) {
+            const notification = state.notifications.find(n => n.id === id);
+            if (notification) {
+                notification.read = true;
+                updateNotificationUI();
+                
+                // If swap notification, go to My Swaps tab
+                if (notification.swapId) {
+                    setTab('myswaps');
+                }
+            }
+        }
+        
+        function clearAllNotifications(event) {
+            event.stopPropagation();
+            state.notifications = [];
+            updateNotificationUI();
+        }
+        
+        function getTimeAgo(timestamp) {
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return 'Just now';
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
+        }
+        
+        // Check for swap alerts (expiration, claims)
+        async function checkSwapAlerts() {
+            const now = Math.floor(Date.now() / 1000);
+            const allSwaps = [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+            
+            for (const swap of allSwaps) {
+                const remaining = swap.expiration - now;
+                const swapKey = `${swap.chain || 'etherlink'}-${swap.hashLock || swap.swapId}`;
+                
+                // Alert if expiring soon (< 5 minutes) and still OPEN
+                if (remaining > 0 && remaining < 300 && swap.status === 0 || swap.status === 'OPEN') {
+                    const alreadyNotified = state.notifications.some(n => 
+                        n.swapId === swapKey && n.type === 'warning' && n.title.includes('Expiring')
+                    );
+                    
+                    if (!alreadyNotified) {
+                        addNotification(
+                            'warning',
+                            '⏰ Swap Expiring Soon!',
+                            `Your swap of ${swap.amount} XTZ expires in ${Math.floor(remaining / 60)} minutes. Take action now!`,
+                            swapKey,
+                            swap.chain || 'etherlink'
+                        );
+                    }
+                }
+                
+                // Check if counterparty claimed (for Etherlink swaps)
+                if (swap.chain !== 'jstz' && swap.status === 1 && !swap.notifiedClaimed) {
+                    swap.notifiedClaimed = true;
+                    addNotification(
+                        'success',
+                        '🎉 Swap Claimed!',
+                        `The counterparty claimed the swap. Secret is now revealed - you can claim your funds!`,
+                        swapKey,
+                        'etherlink'
+                    );
+                }
+            }
+        }
 
         // Utils
         const log = (msg, type = 'info') => {
@@ -3618,10 +3789,13 @@
             2: { label: 'REFUNDED', color: 'text-orange-400', bg: 'bg-orange-400/20', icon: 'fa-rotate-left' }
         };
         
-        // Load all swaps for the connected address
+        // Load all swaps for the connected address (both Etherlink and Jstz)
         async function loadMySwaps() {
-            if (!state.contract || !state.etherlinkAddress) {
-                log('Connect wallet first to see your swaps', 'warning');
+            const hasEtherlink = state.contract && state.etherlinkAddress;
+            const hasJstz = state.jstzAddress;
+            
+            if (!hasEtherlink && !hasJstz) {
+                log('Connect a wallet first to see your swaps', 'warning');
                 document.getElementById('swaps-empty').classList.remove('hidden');
                 document.getElementById('swaps-list').innerHTML = '';
                 document.getElementById('swaps-loading').classList.add('hidden');
@@ -3748,30 +3922,102 @@
                 // Sort by expiration (closest first)
                 state.mySwaps.sort((a, b) => a.expiration - b.expiration);
                 
-                loadingEl.classList.add('hidden');
-                
-                if (state.mySwaps.length === 0) {
-                    emptyEl.classList.remove('hidden');
-                    log(`No swaps found for ${state.etherlinkAddress.substring(0, 10)}...`, 'info');
-                } else {
-                    emptyEl.classList.add('hidden');
-                    renderSwapsList();
-                    startSwapTimers();
-                    log(`Found ${state.mySwaps.length} swap(s)`, 'success');
-                }
+                // Add chain identifier
+                state.mySwaps = state.mySwaps.map(s => ({ ...s, chain: 'etherlink' }));
                 
             } catch (error) {
-                console.error('[MY SWAPS] Error:', error);
-                loadingEl.classList.add('hidden');
+                console.error('[MY SWAPS] Etherlink error:', error);
+                log(`Error loading Etherlink swaps: ${error.message}`, 'error');
+            }
+            
+            // Also load Jstz swaps if connected
+            if (state.jstzAddress) {
+                try {
+                    log('Loading Jstz swaps...', 'system');
+                    const jstzSwaps = await loadJstzSwaps();
+                    state.jstzSwaps = jstzSwaps;
+                    console.log('[MY SWAPS] Jstz swaps loaded:', jstzSwaps.length);
+                } catch (error) {
+                    console.error('[MY SWAPS] Jstz error:', error);
+                    log(`Error loading Jstz swaps: ${error.message}`, 'warning');
+                }
+            }
+            
+            // Combine all swaps
+            const allSwaps = [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+            allSwaps.sort((a, b) => a.expiration - b.expiration);
+            
+            loadingEl.classList.add('hidden');
+            
+            if (allSwaps.length === 0) {
                 emptyEl.classList.remove('hidden');
-                log(`Error loading swaps: ${error.message}`, 'error');
+                const addresses = [state.etherlinkAddress, state.jstzAddress].filter(Boolean).map(a => a.substring(0, 10) + '...');
+                log(`No swaps found for ${addresses.join(' / ')}`, 'info');
+            } else {
+                emptyEl.classList.add('hidden');
+                renderSwapsList(allSwaps);
+                startSwapTimers();
+                checkSwapAlerts(); // Check for notifications
+                log(`Found ${allSwaps.length} swap(s) (${state.mySwaps?.length || 0} Etherlink, ${state.jstzSwaps?.length || 0} Jstz)`, 'success');
+            }
+        }
+        
+        // Load swaps from Jstz
+        async function loadJstzSwaps() {
+            if (!state.jstzAddress) return [];
+            
+            try {
+                // Call the /swaps endpoint to get all swaps
+                const result = await jstzRequest('POST', '/swaps', {}, { forceWallet: true });
+                
+                console.log('[JSTZ SWAPS] Result:', result);
+                
+                if (result.success && result.message) {
+                    let swapsData = result.message;
+                    
+                    if (typeof swapsData === 'string') {
+                        try {
+                            swapsData = JSON.parse(swapsData);
+                        } catch (e) {
+                            console.log('[JSTZ SWAPS] Could not parse:', e);
+                            return [];
+                        }
+                    }
+                    
+                    // Filter swaps for current user
+                    const userAddress = state.jstzAddress.toLowerCase();
+                    const userSwaps = (swapsData.swaps || []).filter(s => 
+                        s.sender?.toLowerCase() === userAddress || 
+                        s.recipient?.toLowerCase() === userAddress
+                    );
+                    
+                    // Format swaps to match Etherlink format
+                    return userSwaps.map(swap => ({
+                        swapId: swap.hashlock,
+                        hashLock: swap.hashlock,
+                        sender: swap.sender,
+                        recipient: swap.recipient,
+                        amount: swap.amount || (swap.amountMutez ? swap.amountMutez / 1000000 : 0),
+                        expiration: swap.expiration,
+                        status: swap.status === 'OPEN' ? 0 : swap.status === 'CLAIMED' ? 1 : 2,
+                        isInitiator: swap.sender?.toLowerCase() === userAddress,
+                        chain: 'jstz',
+                        revealedSecret: swap.revealedSecret || null
+                    }));
+                }
+                
+                return [];
+            } catch (error) {
+                console.error('[JSTZ SWAPS] Error:', error);
+                return [];
             }
         }
         
         // Render all swaps in the list
-        function renderSwapsList() {
+        function renderSwapsList(swaps = null) {
             const listEl = document.getElementById('swaps-list');
-            listEl.innerHTML = state.mySwaps.map(swap => renderSwapCard(swap)).join('');
+            const allSwaps = swaps || [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+            listEl.innerHTML = allSwaps.map(swap => renderSwapCard(swap)).join('');
         }
         
         // Render a single swap card
@@ -3783,18 +4029,30 @@
             const role = swap.isInitiator ? 'Initiator (Alice)' : 'Participant (Bob)';
             const roleColor = swap.isInitiator ? 'text-ether-green' : 'text-jstz-accent';
             
-            // Get explorer URL
+            // Chain info
+            const isJstz = swap.chain === 'jstz';
+            const chainBadge = isJstz ? 
+                '<span class="px-2 py-1 rounded-md text-xs font-bold text-jstz-accent bg-jstz-accent/20"><i class="fa-solid fa-bolt mr-1"></i>Jstz</span>' :
+                '<span class="px-2 py-1 rounded-md text-xs font-bold text-ether-green bg-ether-green/20"><i class="fa-brands fa-ethereum mr-1"></i>Etherlink</span>';
+            
+            // Get explorer URL based on chain
             const networkConfig = NETWORK_CONFIG[state.currentChainId];
-            const explorerUrl = networkConfig?.explorer || '';
+            const explorerUrl = isJstz ? 
+                `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}` :
+                (networkConfig?.explorer || '');
             
             // Determine tx hash to show (refund or claim)
             const txHash = swap.refundTxHash || swap.claimTxHash;
             const txType = swap.refundTxHash ? 'Refund' : (swap.claimTxHash ? 'Claim' : null);
             
+            // Border color based on chain
+            const borderClass = isJstz ? 'border-jstz-accent/30 hover:border-jstz-accent/60' : 'border-white/10 hover:border-white/20';
+            
             return `
-                <div class="bg-gradient-to-r from-white/5 to-transparent rounded-xl p-4 border border-white/10 hover:border-white/20 transition-all">
+                <div class="bg-gradient-to-r ${isJstz ? 'from-jstz-accent/5' : 'from-white/5'} to-transparent rounded-xl p-4 border ${borderClass} transition-all">
                     <div class="flex items-start justify-between mb-3">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            ${chainBadge}
                             <span class="px-2 py-1 rounded-md text-xs font-bold ${statusInfo.color} ${statusInfo.bg}">
                                 <i class="fa-solid ${statusInfo.icon} mr-1"></i>
                                 ${statusInfo.label}
@@ -3808,14 +4066,14 @@
                     
                     <div class="space-y-2 text-xs">
                         <div class="flex items-center justify-between">
-                            <span class="text-gray-500">Swap ID:</span>
+                            <span class="text-gray-500">${isJstz ? 'HashLock' : 'Swap ID'}:</span>
                             <div class="flex items-center gap-2">
                                 <code class="text-gray-300 font-mono">${swap.swapId.substring(0, 12)}...${swap.swapId.slice(-8)}</code>
-                                <button onclick="copySwapId('${swap.swapId}')" class="text-gray-500 hover:text-white transition" title="Copy Swap ID">
+                                <button onclick="copySwapId('${swap.swapId}')" class="text-gray-500 hover:text-white transition" title="Copy">
                                     <i class="fa-regular fa-copy"></i>
                                 </button>
                                 ${explorerUrl ? `
-                                <a href="${explorerUrl}/address/${CONFIG.etherlink.contractAddress}" target="_blank" class="text-gray-500 hover:text-ether-green transition" title="View on Explorer">
+                                <a href="${explorerUrl}" target="_blank" class="text-gray-500 hover:text-${isJstz ? 'jstz-accent' : 'ether-green'} transition" title="View on ${isJstz ? 'Dashboard' : 'Explorer'}">
                                     <i class="fa-solid fa-external-link"></i>
                                 </a>
                                 ` : ''}
@@ -3824,7 +4082,7 @@
                         
                         <div class="flex items-center justify-between">
                             <span class="text-gray-500">Counterparty:</span>
-                            <code class="text-gray-300 font-mono">${swap.isInitiator ? swap.recipient.substring(0, 8) : swap.sender.substring(0, 8)}...</code>
+                            <code class="text-gray-300 font-mono">${swap.isInitiator ? (swap.recipient?.substring(0, 8) || 'Any') : (swap.sender?.substring(0, 8) || '?')}...</code>
                         </div>
                         
                         <div class="flex items-center justify-between">
@@ -3834,7 +4092,7 @@
                             </span>
                         </div>
                         
-                        ${txHash && explorerUrl ? `
+                        ${txHash && !isJstz ? `
                         <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
                             <span class="text-gray-500">${txType} TX:</span>
                             <a href="${explorerUrl}/tx/${txHash}" target="_blank" class="flex items-center gap-1 text-ether-green hover:underline">
@@ -3848,16 +4106,23 @@
                     ${swap.status === 0 ? `
                     <div class="mt-3 pt-3 border-t border-white/10 flex gap-2">
                         ${isExpired && swap.isInitiator ? `
-                        <button onclick="quickRefund('${swap.swapId}')" class="flex-1 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition">
+                        <button onclick="quickRefund('${swap.swapId}', '${swap.chain || 'etherlink'}')" class="flex-1 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition">
                             <i class="fa-solid fa-rotate-left mr-1"></i>
-                            Refund Now
+                            Refund on ${isJstz ? 'Jstz' : 'Etherlink'}
                         </button>
                         ` : `
-                        <button onclick="useSwapInRedeem('${swap.swapId}')" class="flex-1 py-2 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition">
+                        <button onclick="useSwapInRedeem('${swap.swapId}', '${swap.chain || 'etherlink'}')" class="flex-1 py-2 rounded-lg text-xs font-semibold ${isJstz ? 'bg-jstz-accent/20 hover:bg-jstz-accent/30 text-jstz-accent' : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white'} transition">
                             <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>
-                            ${swap.isInitiator ? 'View Details' : 'Claim'}
+                            ${swap.isInitiator ? 'View Details' : 'Claim on ' + (isJstz ? 'Jstz' : 'Etherlink')}
                         </button>
                         `}
+                    </div>
+                    ` : ''}
+                    
+                    ${swap.revealedSecret ? `
+                    <div class="mt-2 p-2 rounded-lg bg-green-500/10 border border-green-500/30">
+                        <div class="text-[10px] text-green-400 font-bold mb-1"><i class="fa-solid fa-key mr-1"></i>Secret Revealed!</div>
+                        <code class="text-xs text-green-300 font-mono break-all">${swap.revealedSecret}</code>
                     </div>
                     ` : ''}
                 </div>
@@ -3885,11 +4150,15 @@
             if (swapTimerInterval) {
                 clearInterval(swapTimerInterval);
             }
+            if (state.notificationCheckInterval) {
+                clearInterval(state.notificationCheckInterval);
+            }
             
             // Update every second
             swapTimerInterval = setInterval(() => {
                 const now = Math.floor(Date.now() / 1000);
-                state.mySwaps.forEach(swap => {
+                const allSwaps = [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+                allSwaps.forEach(swap => {
                     const timerEl = document.getElementById(`timer-${swap.swapId.substring(0, 10)}`);
                     if (timerEl) {
                         const remaining = swap.expiration - now;
@@ -3900,6 +4169,11 @@
                     }
                 });
             }, 1000);
+            
+            // Check for alerts every 30 seconds
+            state.notificationCheckInterval = setInterval(() => {
+                checkSwapAlerts();
+            }, 30000);
         }
         
         // Copy swap ID to clipboard
@@ -3909,10 +4183,14 @@
         }
         
         // Use swap in Redeem tab
-        function useSwapInRedeem(swapId) {
-            const swap = state.mySwaps.find(s => s.swapId === swapId);
+        function useSwapInRedeem(swapId, chain = 'etherlink') {
+            const allSwaps = [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+            const swap = allSwaps.find(s => s.swapId === swapId);
             if (swap) {
                 document.getElementById('swap-id-input').value = swapId;
+                
+                // Store chain info for later use
+                document.getElementById('swap-id-input').dataset.chain = chain;
                 
                 // If user is initiator and has the secret stored, pre-fill it
                 if (swap.isInitiator && state.secret && state.hash === swapId) {
@@ -3920,18 +4198,14 @@
                 }
                 
                 setTab('redeem');
-                log(`Loaded swap ${swapId.substring(0, 12)}... into Redeem tab`, 'info');
+                log(`Loaded ${chain.toUpperCase()} swap ${swapId.substring(0, 12)}... into Redeem tab`, 'info');
             }
         }
         
         // Quick refund directly from My Swaps
-        async function quickRefund(swapId) {
-            if (!state.contract || !state.signer) {
-                log('Connect wallet first!', 'error');
-                return;
-            }
-            
-            const swap = state.mySwaps.find(s => s.swapId === swapId);
+        async function quickRefund(swapId, chain = 'etherlink') {
+            const allSwaps = [...(state.mySwaps || []), ...(state.jstzSwaps || [])];
+            const swap = allSwaps.find(s => s.swapId === swapId);
             if (!swap) {
                 log('Swap not found', 'error');
                 return;
@@ -3941,18 +4215,51 @@
             const modalText = document.getElementById('confirm-modal-text');
             const modalBtn = document.getElementById('confirm-modal-btn');
             
-            modalText.innerText = `Refund ${swap.amount} XTZ from swap ${swapId.substring(0, 8)}...?`;
+            modalText.innerText = `Refund ${swap.amount} XTZ from ${chain.toUpperCase()} swap ${swapId.substring(0, 8)}...?`;
             
             // Set up confirm action
             modalBtn.onclick = async () => {
                 closeConfirmModal();
-                await performRefund(swapId, swap.amount);
+                if (chain === 'jstz') {
+                    await performJstzRefund(swapId, swap.amount);
+                } else {
+                    await performRefund(swapId, swap.amount);
+                }
             };
             
             openConfirmModal();
         }
         
+        // Refund on Jstz
+        async function performJstzRefund(hashlock, amount) {
+            try {
+                log(`Refunding Jstz swap ${hashlock.substring(0, 12)}...`, 'info');
+                
+                const result = await jstzRequest('POST', '/refund', { hashlock }, { forceWallet: true });
+                
+                if (result.success) {
+                    log(`✅ Jstz refund successful!`, 'success');
+                    log(`${amount} XTZ returned to your wallet`, 'success');
+                    addNotification('success', 'Refund Complete', `${amount} XTZ returned from Jstz`, hashlock, 'jstz');
+                    
+                    // Reload swaps
+                    setTimeout(() => loadMySwaps(), 2000);
+                } else {
+                    log(`❌ Jstz refund failed: ${result.error || 'Unknown error'}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Jstz Refund error:', error);
+                log(`❌ Jstz refund error: ${error.message}`, 'error');
+            }
+        }
+        
         async function performRefund(swapId, amount) {
+            if (!state.contract || !state.signer) {
+                log('Connect Etherlink wallet first!', 'error');
+                return;
+            }
+            
             try {
                 log(`Refunding swap ${swapId.substring(0, 12)}...`, 'info');
                 
@@ -4516,12 +4823,20 @@
         log(`Jstz Function: ${CONFIG.jstz.functionAddress}`, 'info');
         log(`Tokens available: ${Object.keys(TOKENS).join(', ')}`, 'info');
         
-        // Close token dropdown when clicking outside
+        // Close dropdowns when clicking outside
         document.addEventListener('click', (e) => {
-            const dropdown = document.getElementById('token-dropdown');
+            // Token dropdown
+            const tokenDropdown = document.getElementById('token-dropdown');
             const assetSelector = e.target.closest('[onclick="toggleTokenSelector()"]');
             if (!assetSelector && !e.target.closest('#token-dropdown')) {
                 toggleTokenSelector(false);
+            }
+            
+            // Notification dropdown
+            const notifBell = document.getElementById('notification-bell');
+            const notifDropdown = document.getElementById('notification-dropdown');
+            if (!e.target.closest('#notification-bell')) {
+                notifDropdown?.classList.add('hidden');
             }
         });
 
