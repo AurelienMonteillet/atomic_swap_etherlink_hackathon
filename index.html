@@ -957,7 +957,8 @@
             tokenSelectorOpen: false,
             currentChainId: null, // Current network chain ID
             aliceSwapVerified: false, // Whether Alice's swap was verified in Join mode
-            aliceSwapData: null // Alice's swap data from verification
+            aliceSwapData: null, // Alice's swap data from verification
+            jstzBalance: null // Jstz balance for connected wallet
         };
 
         // Utils
@@ -1252,27 +1253,56 @@
             name.textContent = networkName;
             
             // Color based on network
-            if (chainId === 128123) {
+            if (chainId === 'jstz-privatenet') {
+                // Jstz Privatenet - Gold/Yellow (Jstz brand color)
+                dot.className = 'w-2 h-2 rounded-full bg-jstz-accent animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-jstz-accent/50 cursor-default';
+                name.className = 'text-xs text-jstz-accent';
+                badge.onclick = null;
+                badge.title = 'Connected to Jstz Privatenet';
+            } else if (chainId === 'jstz-sandbox') {
+                // Jstz Sandbox - Orange
+                dot.className = 'w-2 h-2 rounded-full bg-orange-500 animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-orange-500/50 cursor-default';
+                name.className = 'text-xs text-orange-400';
+                badge.onclick = null;
+                badge.title = 'Connected to Jstz Sandbox';
+            } else if (chainId === 128123) {
                 // Etherlink Testnet - Green (correct network)
                 dot.className = 'w-2 h-2 rounded-full bg-ether-green animate-pulse';
                 badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-ether-green/50 cursor-pointer hover:border-ether-green transition';
                 name.className = 'text-xs text-ether-green';
+                badge.onclick = () => switchToEtherlink(128123);
+                badge.title = 'Connected to Etherlink Testnet';
             } else if (chainId === 42793) {
                 // Etherlink Mainnet - Blue
                 dot.className = 'w-2 h-2 rounded-full bg-blue-500 animate-pulse';
                 badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-blue-500/50 cursor-pointer hover:border-blue-500 transition';
                 name.className = 'text-xs text-blue-400';
+                badge.onclick = () => switchToEtherlink(42793);
+                badge.title = 'Connected to Etherlink Mainnet';
             } else if (chainId === 31337) {
                 // Hardhat Local - Yellow
                 dot.className = 'w-2 h-2 rounded-full bg-yellow-500 animate-pulse';
                 badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-yellow-500/50 cursor-pointer hover:border-yellow-500 transition';
                 name.className = 'text-xs text-yellow-400';
+                badge.onclick = () => switchToEtherlink(31337);
+                badge.title = 'Connected to Hardhat Local';
+            } else if (chainId === null || chainId === 0) {
+                // Not connected
+                dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-white/10 cursor-pointer hover:border-ether-green/50 transition';
+                name.className = 'text-xs text-gray-400';
+                badge.onclick = () => switchToEtherlink(128123);
+                badge.title = 'Click to connect';
             } else {
                 // Wrong network - Red with prominent "click to switch" indicator
                 dot.className = 'w-2 h-2 rounded-full bg-red-500 animate-pulse';
                 badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/20 border-2 border-red-500 cursor-pointer hover:bg-red-500/30 transition animate-pulse';
                 name.className = 'text-xs text-red-400 font-bold';
                 name.innerHTML = `${networkName} <span class="ml-1 text-[10px] bg-red-500 text-white px-1 rounded">⚠️ CLICK TO SWITCH</span>`;
+                badge.onclick = () => switchToEtherlink(128123);
+                badge.title = 'Click to switch to Etherlink Testnet';
                 
                 // Log warning message
                 log(`⚠️ Wrong network detected! Click the red badge to switch to Etherlink Testnet`, 'error');
@@ -1679,8 +1709,117 @@
             }
         }
 
+        // Fetch Jstz balance for connected address
+        async function fetchJstzBalance() {
+            if (!state.jstzAddress) return null;
+            
+            try {
+                const response = await fetch(`${CONFIG.jstz.rpcUrl}/accounts/${state.jstzAddress}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('[JSTZ] Account data:', data);
+                    
+                    // Handle different response structures
+                    // Could be: data.User.amount, data.balance, data.amount
+                    let balanceMutez = 0;
+                    if (data.User && data.User.amount !== undefined) {
+                        balanceMutez = data.User.amount;
+                    } else if (data.balance !== undefined) {
+                        balanceMutez = data.balance;
+                    } else if (data.amount !== undefined) {
+                        balanceMutez = data.amount;
+                    }
+                    
+                    // Balance is in mutez (1 XTZ = 1,000,000 mutez)
+                    const balanceXTZ = typeof balanceMutez === 'number' ? balanceMutez / 1000000 : parseFloat(balanceMutez) / 1000000;
+                    
+                    console.log('[JSTZ] Parsed balance:', balanceMutez, 'mutez =', balanceXTZ, 'XTZ');
+                    
+                    state.jstzBalance = balanceXTZ;
+                    state.tokenBalances['XTZ'] = balanceXTZ.toString();
+                    updateJstzBalanceDisplay();
+                    log(`Balance: ${balanceXTZ.toFixed(4)} XTZ`, 'success');
+                    return balanceXTZ;
+                } else {
+                    console.warn('[JSTZ] Failed to fetch balance:', response.status);
+                    // Try alternative endpoint
+                    return await fetchJstzBalanceAlt();
+                }
+            } catch (error) {
+                console.warn('[JSTZ] Balance fetch error:', error);
+                return await fetchJstzBalanceAlt();
+            }
+        }
+        
+        // Alternative balance fetch via ctez endpoint
+        async function fetchJstzBalanceAlt() {
+            if (!state.jstzAddress) return null;
+            
+            try {
+                // Try the ctez balance endpoint
+                const response = await fetch(`${CONFIG.jstz.rpcUrl}/ctez/${state.jstzAddress}/balance`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('[JSTZ] Ctez balance data:', data);
+                    
+                    let balanceMutez = 0;
+                    if (data.User && data.User.amount !== undefined) {
+                        balanceMutez = data.User.amount;
+                    } else if (typeof data === 'number') {
+                        balanceMutez = data;
+                    } else {
+                        balanceMutez = data.balance || data.amount || 0;
+                    }
+                    
+                    const balanceXTZ = typeof balanceMutez === 'number' ? balanceMutez / 1000000 : parseFloat(balanceMutez) / 1000000;
+                    
+                    state.jstzBalance = balanceXTZ;
+                    state.tokenBalances['XTZ'] = balanceXTZ.toString();
+                    updateJstzBalanceDisplay();
+                    return balanceXTZ;
+                }
+            } catch (error) {
+                console.warn('[JSTZ] Alt balance fetch error:', error);
+            }
+            
+            // Default to 0 if can't fetch
+            state.jstzBalance = 0;
+            updateJstzBalanceDisplay();
+            return 0;
+        }
+        
+        // Update Jstz balance display in UI
+        function updateJstzBalanceDisplay() {
+            const balanceEl = document.getElementById('selected-token-balance');
+            
+            // Only update if Jstz wallet is connected
+            if (state.connectedWallet === 'jstz') {
+                const balance = state.jstzBalance !== undefined ? state.jstzBalance : 0;
+                const formatted = parseFloat(balance).toFixed(4);
+                if (balanceEl) {
+                    balanceEl.innerText = `Balance: ${formatted} XTZ`;
+                }
+                console.log('[JSTZ] Updated balance display:', formatted, 'XTZ');
+            }
+        }
+
         // Fetch all token balances
         async function fetchAllBalances() {
+            // For Jstz wallet
+            if (state.connectedWallet === 'jstz') {
+                await fetchJstzBalance();
+                return;
+            }
+            
+            // For Etherlink wallet
             if (!state.provider || !state.etherlinkAddress) return;
 
             const availableTokens = getAvailableTokens();
@@ -4121,6 +4260,13 @@
                     
                     log(`✅ Jstz wallet connected: ${state.jstzAddress}`, 'success');
                     log('Transactions will be signed by your wallet extension', 'system');
+                    
+                    // Update network badge for Jstz
+                    const jstzNetwork = CONFIG.jstz.network || 'privatenet';
+                    updateNetworkBadge(`jstz-${jstzNetwork}`, `Jstz ${jstzNetwork.charAt(0).toUpperCase() + jstzNetwork.slice(1)}`);
+                    
+                    // Fetch Jstz balance
+                    await fetchJstzBalance();
                 } else {
                     // No extension - use simulated mode
                     state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
@@ -4132,6 +4278,13 @@
                     log(`⚠️ Jstz wallet extension not found`, 'warning');
                     log(`Using demo mode - CLI commands will be shown`, 'system');
                     log(`Install wallet: <a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-ether-green hover:underline">github.com/jstz-dev/dev-wallet</a>`, 'info');
+                    
+                    // Update network badge for Jstz
+                    const jstzNetwork = CONFIG.jstz.network || 'privatenet';
+                    updateNetworkBadge(`jstz-${jstzNetwork}`, `Jstz ${jstzNetwork.charAt(0).toUpperCase() + jstzNetwork.slice(1)} (demo)`);
+                    
+                    // Try to fetch balance anyway
+                    await fetchJstzBalance();
                 }
             } catch (error) {
                 console.error('[JSTZ] Connection error:', error);
@@ -4143,6 +4296,13 @@
                 btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
                 updateWalletConnectionUI('jstz');
                 log('Falling back to demo mode', 'system');
+                
+                // Update network badge for Jstz
+                const jstzNetwork = CONFIG.jstz.network || 'privatenet';
+                updateNetworkBadge(`jstz-${jstzNetwork}`, `Jstz ${jstzNetwork.charAt(0).toUpperCase() + jstzNetwork.slice(1)} (demo)`);
+                
+                // Try to fetch balance
+                await fetchJstzBalance();
             }
         });
 
