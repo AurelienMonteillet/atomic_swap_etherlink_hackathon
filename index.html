@@ -1767,8 +1767,8 @@
         // REAL CONTRACT INTERACTIONS
         // ============================================
 
-        // Initiate swap on Etherlink (Alice locks ETH)
-        async function initiateOnEtherlink() {
+        // ALICE initiates swap on Etherlink (locks XTZ, Bob will match on Jstz)
+        async function initiateAsAliceOnEtherlink() {
             const btn = document.getElementById('main-action-btn');
             const amount = document.getElementById('amount-input').value;
             const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
@@ -1918,8 +1918,132 @@
             }
         }
 
-        // Initiate swap on Jstz (Bob locks XTZ)
-        async function initiateOnJstz() {
+        // ALICE initiates swap on Jstz (locks XTZ, Bob will match on Etherlink)
+        async function initiateAsAliceOnJstz() {
+            const btn = document.getElementById('main-action-btn');
+            const amount = document.getElementById('amount-input').value;
+            const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
+            const timelockInput = document.getElementById('timelock-input');
+            const timelockMins = parseInt(timelockInput?.value || 60);
+
+            // ========== INPUT VALIDATION ==========
+            
+            // 1. Validate amount
+            if (!amount || parseFloat(amount) <= 0) {
+                log("❌ Please enter a valid amount (> 0)", 'error');
+                return;
+            }
+            
+            // 2. Validate we have a secret (Alice generates the secret)
+            if (!state.secret || !state.hash) {
+                log("❌ Please generate a secret first (click 'Initiate' tab)", 'error');
+                return;
+            }
+            
+            // 3. Validate timelock (minimum 5 minutes for safety)
+            if (timelockMins < 5) {
+                log("❌ Timelock must be at least 5 minutes for safety", 'error');
+                return;
+            }
+
+            // 4. Connect Jstz if not connected
+            if (!state.jstzAddress) {
+                log('Connecting to Jstz wallet...', 'warning');
+                const connected = await connectJstz();
+                if (!connected) {
+                    log('❌ Failed to connect Jstz wallet', 'error');
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates...`;
+
+            // ========== CHECK FOR DUPLICATE ON JSTZ ==========
+            log('Checking if swap with this hash already exists...', 'warning');
+            const existingSwap = await verifySwapOnJstz(state.hash);
+            if (existingSwap.valid && existingSwap.swap) {
+                log(`❌ A swap with this HashLock already exists on Jstz!`, 'error');
+                log(`Generate a new secret to create a new swap.`, 'system');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log('✓ HashLock is unique', 'success');
+
+            // ========== INITIATE SWAP ON JSTZ ==========
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking funds on Jstz...`;
+
+            try {
+                const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
+                const recipient = counterpartyInput?.value || '';
+                
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🔐 ALICE INITIE SUR JSTZ`, 'warning');
+                log(`Amount: ${amount} XTZ`, 'info');
+                log(`HashLock: ${state.hash.substring(0, 18)}...`, 'info');
+                log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()} (${timelockMins} mins)`, 'info');
+                if (recipient) {
+                    log(`Recipient (Bob): ${recipient.substring(0, 15)}...`, 'info');
+                }
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                
+                // Call Jstz smart function
+                log(`Calling Jstz HTLC: /initiate`, 'system');
+                
+                const response = await jstzRequest('POST', '/initiate', {
+                    hashlock: state.hash,
+                    amount: amount,
+                    expiration: expiration,
+                    recipient: recipient || null
+                });
+                
+                if (!response.success) {
+                    throw new Error(response.error || 'Failed to initiate swap on Jstz');
+                }
+                
+                // Store for later
+                state.currentSwapId = state.hash;
+                
+                log(``, 'system');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🎉 SWAP INITIÉ AVEC SUCCÈS SUR JSTZ!`, 'success');
+                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(``, 'system');
+                log(`📋 PROCHAINE ÉTAPE:`, 'warning');
+                log(`   Partagez ce HASH avec Bob:`, 'info');
+                log(`   ${state.hash}`, 'system');
+                log(``, 'system');
+                log(`👤 BOB DOIT:`, 'info');
+                log(`   1. Se connecter avec MetaMask (Etherlink)`, 'system');
+                log(`   2. Cliquer sur "Join" et coller le hash`, 'system');
+                log(`   3. Cliquer "Match Swap" pour verrouiller ses fonds`, 'system');
+                log(``, 'system');
+                log(`⏰ Après que Bob ait locké, vous pourrez claim sur Etherlink!`, 'warning');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                
+                updateProgress(2);
+                
+                // Pre-fill values for redeem tab
+                prefillRedeemForm(state.currentSwapId, state.secret);
+                
+                btn.innerHTML = `<span>Waiting for Bob on Etherlink...</span>`;
+                
+                setTimeout(() => {
+                    log("Prêt à claim sur Etherlink (quand Bob a locké)", 'system');
+                    btn.disabled = false;
+                    updateProgress(3);
+                }, 2000);
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+            }
+        }
+
+        // BOB matches swap on Jstz (Alice already locked on Etherlink)
+        async function matchAsBobOnJstz() {
             const btn = document.getElementById('main-action-btn');
             const amount = document.getElementById('amount-input').value;
             const hashInput = document.getElementById('hash-input');
@@ -2073,6 +2197,193 @@
                     btn.disabled = false;
                     btn.innerHTML = `<span>Waiting for Secret...</span>`;
                     // No onClick needed here, user should go to Redeem tab
+                }, 2000);
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+            }
+        }
+
+        // BOB matches swap on Etherlink (Alice already locked on Jstz)
+        async function matchAsBobOnEtherlink() {
+            const btn = document.getElementById('main-action-btn');
+            const amount = document.getElementById('amount-input').value;
+            const hashInput = document.getElementById('hash-input');
+            const hashlock = hashInput.value;
+            const timelockInput = document.getElementById('timelock-input');
+            const timelockMins = parseInt(timelockInput?.value || 30);
+
+            // ========== INPUT VALIDATION ==========
+            
+            // 1. Validate amount
+            if (!amount || parseFloat(amount) <= 0) {
+                log("❌ Please enter a valid amount (> 0)", 'error');
+                return;
+            }
+            
+            // 2. Validate hashlock (provided by Alice)
+            if (!hashlock || !isValidHashLock(hashlock)) {
+                log("❌ Please enter Alice's HashLock (0x...)", 'error');
+                return;
+            }
+            
+            // 3. Validate timelock (Bob's timelock should be shorter than Alice's)
+            if (timelockMins < 2) {
+                log("❌ Timelock must be at least 2 minutes", 'error');
+                return;
+            }
+            
+            // 4. Warning if timelock is too long (should be shorter than Alice's)
+            if (timelockMins >= 60) {
+                log("⚠️ Warning: Your timelock should be shorter than Alice's for safety", 'warning');
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying Alice's swap on Jstz...`;
+            
+            // ========== VERIFY ALICE'S SWAP EXISTS ON JSTZ ==========
+            log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
+            log("🔍 BOB VÉRIFIE LE SWAP D'ALICE SUR JSTZ", 'warning');
+            log("Checking if Alice has locked funds on Jstz...", 'info');
+            
+            const aliceSwap = await verifySwapOnJstz(hashlock);
+            
+            if (!aliceSwap.valid || !aliceSwap.swap) {
+                log(``, 'system');
+                log(`❌ ERREUR: Aucun swap trouvé sur Jstz!`, 'error');
+                log(``, 'system');
+                log(`📋 Ce que ça signifie:`, 'warning');
+                log(`   Alice n'a pas encore verrouillé ses fonds`, 'info');
+                log(`   avec ce HashLock sur Jstz.`, 'info');
+                log(``, 'system');
+                log(`✅ Ce que vous devez faire:`, 'success');
+                log(`   1. Demandez à Alice de d'abord initier le swap`, 'system');
+                log(`   2. Alice doit se connecter avec Jstz wallet`, 'system');
+                log(`   3. Puis revenez ici pour "Match Swap"`, 'system');
+                log(``, 'system');
+                log(`🔑 HashLock attendu: ${hashlock.substring(0, 20)}...`, 'info');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            log(`✓ Found Alice's swap: ${aliceSwap.swap.amount} XTZ locked`, 'success');
+            
+            // Check Alice's swap status
+            if (aliceSwap.swap.status !== 'OPEN') {
+                log(`❌ Alice's swap is not active (status: ${aliceSwap.swap.status})`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            // Check expiration
+            const aliceExpiration = aliceSwap.swap.expiration;
+            const now = Math.floor(Date.now() / 1000);
+            
+            if (now >= aliceExpiration) {
+                log("❌ Alice's swap has expired! Don't lock your funds.", 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            const aliceRemainingMins = Math.floor((aliceExpiration - now) / 60);
+            
+            if (timelockMins >= aliceRemainingMins) {
+                log(`❌ Your timelock (${timelockMins}m) must be shorter than Alice's remaining time (${aliceRemainingMins}m)`, 'error');
+                log(`Recommended: Set timelock to ${Math.floor(aliceRemainingMins / 2)} minutes`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log(`✓ Timelock is safe (${timelockMins}m < ${aliceRemainingMins}m remaining)`, 'success');
+            log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+
+            // ========== CHECK FOR DUPLICATE ON ETHERLINK ==========
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates on Etherlink...`;
+            
+            const existingEthSwap = await verifySwapOnEtherlink(hashlock);
+            if (existingEthSwap.valid && existingEthSwap.swap) {
+                log(`❌ A swap with this HashLock already exists on Etherlink!`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log('✓ HashLock is unique on Etherlink', 'success');
+
+            // ========== CONNECT ETHERLINK IF NEEDED ==========
+            if (!state.contract) {
+                log('Connecting to Etherlink...', 'warning');
+                const connected = await connectEtherlink();
+                if (!connected) {
+                    log('❌ Failed to connect to Etherlink', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                    return;
+                }
+            }
+
+            // ========== INITIATE SWAP ON ETHERLINK ==========
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking funds on Etherlink...`;
+
+            try {
+                const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
+                // Bob can specify Alice as recipient, or leave empty
+                const recipient = aliceSwap.swap.sender || ethers.constants.AddressZero;
+                
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🔐 BOB MATCHE SUR ETHERLINK`, 'warning');
+                log(`Amount: ${amount} XTZ`, 'info');
+                log(`HashLock: ${hashlock.substring(0, 18)}...`, 'info');
+                log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()} (${timelockMins} mins)`, 'info');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                
+                log('Sending transaction to Etherlink...', 'warning');
+                
+                const tx = await state.contract.initiateSwap(
+                    hashlock,
+                    ethers.constants.AddressZero, // No specific recipient for flexibility
+                    expiration,
+                    { value: ethers.utils.parseEther(amount) }
+                );
+                
+                logTx(tx.hash, 'Transaction sent');
+                log('Waiting for confirmation...', 'warning');
+                
+                const receipt = await tx.wait();
+                
+                // Store for later
+                state.currentSwapId = hashlock;
+                state.hash = hashlock;
+                
+                log(``, 'system');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🎉 SWAP MATCHÉ AVEC SUCCÈS SUR ETHERLINK!`, 'success');
+                logTx(receipt.hash || tx.hash, '✅ Confirmed');
+                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(``, 'system');
+                log(`📋 PROCHAINES ÉTAPES:`, 'warning');
+                log(`   1. Attendez qu'Alice claim vos fonds sur Etherlink`, 'info');
+                log(`   2. Quand elle claim, le SECRET sera révélé`, 'info');
+                log(`   3. Utilisez ce secret pour claim sur Jstz!`, 'info');
+                log(``, 'system');
+                log(`⏰ IMPORTANT: Claimez avant l'expiration du swap d'Alice!`, 'warning');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                
+                updateProgress(3);
+                
+                // Pre-fill values for redeem tab
+                prefillRedeemForm(state.hash, null);
+                
+                btn.innerHTML = `<span>Waiting for Secret...</span>`;
+                
+                setTimeout(() => {
+                    log("Prêt à claim sur Jstz (quand Alice révèle le secret)", 'system');
+                    btn.disabled = false;
                 }, 2000);
 
             } catch (error) {
@@ -2277,7 +2588,7 @@
             try {
                 console.log('[VERIFY] Checking swap on Jstz:', hashLock);
                 
-                const response = await jstzRequest('GET', `/swap/${hashLock}`);
+                const response = await jstzRequest('POST', `/swap/${hashLock}`, {});
                 
                 if (!response || response.error) {
                     return {
@@ -3189,20 +3500,37 @@
         // Main action dispatcher
         async function executeAction() {
             if (state.mode === 'create') {
-                // Alice initiates
-                if (state.chain === 'etherlink') {
-                    await initiateOnEtherlink();
+                // ALICE INITIATES - creates new swap with her secret
+                if (state.connectedWallet === 'etherlink') {
+                    // Alice locks on Etherlink, Bob will match on Jstz
+                    await initiateAsAliceOnEtherlink();
+                } else if (state.connectedWallet === 'jstz') {
+                    // Alice locks on Jstz, Bob will match on Etherlink
+                    await initiateAsAliceOnJstz();
                 } else {
-                    await initiateOnJstz();
+                    log('❌ Please connect a wallet first', 'error');
                 }
             } else {
-                // Bob joins
-                if (state.chain === 'etherlink') {
-                    await initiateOnJstz(); // Bob locks on opposite chain
+                // BOB JOINS - matches existing swap with Alice's hash
+                if (state.connectedWallet === 'jstz') {
+                    // Alice locked on Etherlink, Bob matches on Jstz
+                    await matchAsBobOnJstz();
+                } else if (state.connectedWallet === 'etherlink') {
+                    // Alice locked on Jstz, Bob matches on Etherlink
+                    await matchAsBobOnEtherlink();
                 } else {
-                    await initiateOnEtherlink();
+                    log('❌ Please connect a wallet first', 'error');
                 }
             }
+        }
+        
+        // Alias for backwards compatibility
+        async function initiateOnEtherlink() {
+            await initiateAsAliceOnEtherlink();
+        }
+        
+        async function initiateOnJstz() {
+            await matchAsBobOnJstz();
         }
 
         // Legacy functions for compatibility
@@ -3424,3 +3752,4 @@
     </div>
 </body>
 </html>
+
