@@ -468,13 +468,40 @@
     <script>
         // --- REAL CONTRACT INTEGRATION ---
 
-        // Contract Configuration
-        const CONFIG = {
-            // Etherlink HTLC Contract (Hardhat local)
-            etherlink: {
-                contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+        // Contract Configuration - Per Network
+        const NETWORK_CONFIG = {
+            // Hardhat Local
+            31337: {
+                name: 'Hardhat Local',
                 rpcUrl: 'http://127.0.0.1:8545',
-                chainId: 31337,
+                htlcAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3', // Deploy locally
+                explorer: null
+            },
+            // Etherlink Testnet (Ghostnet)
+            128123: {
+                name: 'Etherlink Testnet',
+                rpcUrl: 'https://node.ghostnet.etherlink.com',
+                htlcAddress: null, // TODO: Deploy and fill this
+                explorer: 'https://testnet.explorer.etherlink.com'
+            },
+            // Etherlink Mainnet
+            42793: {
+                name: 'Etherlink Mainnet',
+                rpcUrl: 'https://node.mainnet.etherlink.com',
+                htlcAddress: null, // TODO: Deploy and fill this
+                explorer: 'https://explorer.etherlink.com'
+            }
+        };
+
+        // Default to testnet for real testing
+        const DEFAULT_CHAIN_ID = 128123; // Etherlink Testnet
+
+        const CONFIG = {
+            // Current Etherlink config (will be updated based on connected network)
+            etherlink: {
+                contractAddress: NETWORK_CONFIG[DEFAULT_CHAIN_ID]?.htlcAddress || '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+                rpcUrl: NETWORK_CONFIG[DEFAULT_CHAIN_ID]?.rpcUrl || 'http://127.0.0.1:8545',
+                chainId: DEFAULT_CHAIN_ID,
                 abi: [
                     "function initiateSwap(address recipient, bytes32 hashLock, uint256 expiration) external payable returns (bytes32)",
                     "function claimSwap(bytes32 swapId, bytes calldata secret) external returns (bool)",
@@ -635,19 +662,88 @@
                 state.currentChainId = network.chainId;
                 
                 // Log network info
-                const networkName = getNetworkName(state.currentChainId);
+                const networkConfig = NETWORK_CONFIG[state.currentChainId];
+                const networkName = networkConfig?.name || getNetworkName(state.currentChainId);
                 log(`Network: ${networkName} (chainId: ${state.currentChainId})`, 'info');
                 
-                // Initialize contract
-                state.contract = new ethers.Contract(
-                    CONFIG.etherlink.contractAddress,
-                    CONFIG.etherlink.abi,
-                    state.signer
-                );
+                // Get HTLC contract address for this network
+                const htlcAddress = networkConfig?.htlcAddress;
+                if (!htlcAddress) {
+                    log(`⚠️ HTLC contract not deployed on ${networkName}!`, 'warning');
+                    log(`Deploy with: npx hardhat run scripts/deploy.js --network etherlinkTestnet`, 'system');
+                }
+                
+                // Initialize contract (if address exists)
+                if (htlcAddress) {
+                    state.contract = new ethers.Contract(
+                        htlcAddress,
+                        CONFIG.etherlink.abi,
+                        state.signer
+                    );
+                    log(`HTLC Contract: ${htlcAddress.substring(0, 10)}...`, 'success');
+                } else {
+                    state.contract = null;
+                }
                 
                 return true;
             } catch (error) {
                 log(`Etherlink connection failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Add Etherlink network to MetaMask
+        async function addEtherlinkToMetaMask(chainId = 128123) {
+            if (typeof window.ethereum === 'undefined') {
+                log('MetaMask not installed', 'error');
+                return false;
+            }
+            
+            const networkConfig = NETWORK_CONFIG[chainId];
+            if (!networkConfig) {
+                log('Unknown network', 'error');
+                return false;
+            }
+
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: '0x' + chainId.toString(16),
+                        chainName: networkConfig.name,
+                        nativeCurrency: {
+                            name: 'Tezos',
+                            symbol: 'XTZ',
+                            decimals: 18
+                        },
+                        rpcUrls: [networkConfig.rpcUrl],
+                        blockExplorerUrls: networkConfig.explorer ? [networkConfig.explorer] : null
+                    }]
+                });
+                log(`${networkConfig.name} added to MetaMask!`, 'success');
+                return true;
+            } catch (error) {
+                log(`Failed to add network: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Switch MetaMask to Etherlink network
+        async function switchToEtherlink(chainId = 128123) {
+            if (typeof window.ethereum === 'undefined') return false;
+            
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0x' + chainId.toString(16) }]
+                });
+                return true;
+            } catch (error) {
+                // Chain not added, try to add it
+                if (error.code === 4902) {
+                    return await addEtherlinkToMetaMask(chainId);
+                }
+                log(`Failed to switch network: ${error.message}`, 'error');
                 return false;
             }
         }
@@ -1042,9 +1138,18 @@
                 return;
             }
 
-            if (!state.contract) {
+            // Connect if not connected
+            if (!state.provider) {
                 const connected = await connectEtherlink();
                 if (!connected) return;
+            }
+
+            // Check if contract is deployed on this network
+            if (!state.contract) {
+                const networkName = NETWORK_CONFIG[state.currentChainId]?.name || 'this network';
+                log(`❌ HTLC contract not deployed on ${networkName}!`, 'error');
+                log('Deploy with: npx hardhat run scripts/deploy.js --network etherlinkTestnet', 'system');
+                return;
             }
 
             btn.disabled = true;
