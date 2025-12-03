@@ -219,10 +219,10 @@
                 </div>
                 
                 <div class="hidden md:flex items-center space-x-4">
-                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-white/10">
-                        <div class="w-2 h-2 rounded-full bg-ether-green animate-pulse"></div>
-                        <span class="text-xs text-gray-400">Mainnet Alpha</span>
-        </div>
+                    <div id="network-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-white/10 cursor-pointer hover:border-ether-green/50 transition" onclick="switchToEtherlink(128123)" title="Click to switch to Etherlink Testnet">
+                        <div id="network-dot" class="w-2 h-2 rounded-full bg-gray-500"></div>
+                        <span id="network-name" class="text-xs text-gray-400">Not Connected</span>
+                    </div>
                     <button id="wallet-etherlink" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition text-sm font-medium">
                         <i class="fa-brands fa-ethereum text-ether-green"></i>
                         <span id="wallet-etherlink-text">Connect Etherlink</span>
@@ -642,15 +642,20 @@
         // Connect to Etherlink (MetaMask or local)
         async function connectEtherlink() {
             try {
+                console.log('[DEBUG] Starting Etherlink connection...');
+                
                 if (typeof window.ethereum !== 'undefined') {
                     // Use MetaMask
+                    console.log('[DEBUG] MetaMask detected, requesting accounts...');
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
                     state.provider = new ethers.providers.Web3Provider(window.ethereum);
                     state.signer = state.provider.getSigner();
                     state.etherlinkAddress = await state.signer.getAddress();
+                    console.log('[DEBUG] Connected address:', state.etherlinkAddress);
                     log(`MetaMask connected: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
                 } else {
                     // Fallback to local Hardhat node
+                    console.log('[DEBUG] No MetaMask, falling back to local node');
                     state.provider = new ethers.providers.JsonRpcProvider(CONFIG.etherlink.rpcUrl);
                     state.signer = state.provider.getSigner(0);
                     state.etherlinkAddress = await state.signer.getAddress();
@@ -660,17 +665,30 @@
                 // Get current chain ID
                 const network = await state.provider.getNetwork();
                 state.currentChainId = network.chainId;
+                console.log('[DEBUG] Connected to chainId:', state.currentChainId);
                 
                 // Log network info
                 const networkConfig = NETWORK_CONFIG[state.currentChainId];
                 const networkName = networkConfig?.name || getNetworkName(state.currentChainId);
                 log(`Network: ${networkName} (chainId: ${state.currentChainId})`, 'info');
                 
+                // Update network badge in header
+                updateNetworkBadge(state.currentChainId, networkName);
+                
+                // Check if we're on the wrong network
+                const isEtherlinkNetwork = [128123, 42793, 31337].includes(state.currentChainId);
+                if (!isEtherlinkNetwork) {
+                    log(`⚠️ Wrong network! You are on ${networkName} (chainId: ${state.currentChainId})`, 'warning');
+                    log(`Click the network badge to switch to Etherlink Testnet`, 'system');
+                    console.log('[DEBUG] Wrong network detected. Expected Etherlink (128123, 42793, or 31337), got:', state.currentChainId);
+                }
+                
                 // Get HTLC contract address for this network
                 const htlcAddress = networkConfig?.htlcAddress;
                 if (!htlcAddress) {
                     log(`⚠️ HTLC contract not deployed on ${networkName}!`, 'warning');
                     log(`Deploy with: npx hardhat run scripts/deploy.js --network etherlinkTestnet`, 'system');
+                    console.log('[DEBUG] No HTLC address for chainId:', state.currentChainId);
                 }
                 
                 // Initialize contract (if address exists)
@@ -681,14 +699,79 @@
                         state.signer
                     );
                     log(`HTLC Contract: ${htlcAddress.substring(0, 10)}...`, 'success');
+                    console.log('[DEBUG] Contract initialized at:', htlcAddress);
                 } else {
                     state.contract = null;
                 }
                 
+                // Fetch and log balance
+                await fetchAndLogBalance();
+                
                 return true;
             } catch (error) {
+                console.error('[DEBUG] Connection error:', error);
                 log(`Etherlink connection failed: ${error.message}`, 'error');
                 return false;
+            }
+        }
+        
+        // Update the network badge in header
+        function updateNetworkBadge(chainId, networkName) {
+            const badge = document.getElementById('network-badge');
+            const dot = document.getElementById('network-dot');
+            const name = document.getElementById('network-name');
+            
+            if (!badge || !dot || !name) return;
+            
+            name.textContent = networkName;
+            
+            // Color based on network
+            if (chainId === 128123) {
+                // Etherlink Testnet - Green (correct network)
+                dot.className = 'w-2 h-2 rounded-full bg-ether-green animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-ether-green/50 cursor-pointer hover:border-ether-green transition';
+                name.className = 'text-xs text-ether-green';
+            } else if (chainId === 42793) {
+                // Etherlink Mainnet - Blue
+                dot.className = 'w-2 h-2 rounded-full bg-blue-500 animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-blue-500/50 cursor-pointer hover:border-blue-500 transition';
+                name.className = 'text-xs text-blue-400';
+            } else if (chainId === 31337) {
+                // Hardhat Local - Yellow
+                dot.className = 'w-2 h-2 rounded-full bg-yellow-500 animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-yellow-500/50 cursor-pointer hover:border-yellow-500 transition';
+                name.className = 'text-xs text-yellow-400';
+            } else {
+                // Wrong network - Red
+                dot.className = 'w-2 h-2 rounded-full bg-red-500 animate-pulse';
+                badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-ether-dark border border-red-500/50 cursor-pointer hover:border-red-500 transition';
+                name.className = 'text-xs text-red-400';
+            }
+        }
+        
+        // Fetch and log balance with debug info
+        async function fetchAndLogBalance() {
+            if (!state.provider || !state.etherlinkAddress) {
+                console.log('[DEBUG] Cannot fetch balance - provider or address missing');
+                return;
+            }
+            
+            try {
+                console.log('[DEBUG] Fetching native balance for:', state.etherlinkAddress);
+                const balance = await state.provider.getBalance(state.etherlinkAddress);
+                const balanceEth = ethers.utils.formatEther(balance);
+                console.log('[DEBUG] Native balance (wei):', balance.toString());
+                console.log('[DEBUG] Native balance (XTZ):', balanceEth);
+                log(`Balance: ${parseFloat(balanceEth).toFixed(4)} XTZ`, 'info');
+                
+                // Update balance display
+                const balanceDisplay = document.querySelector('.text-gray-500');
+                if (balanceDisplay && balanceDisplay.textContent.includes('Balance:')) {
+                    balanceDisplay.textContent = `Balance: ${parseFloat(balanceEth).toFixed(4)} XTZ`;
+                }
+            } catch (error) {
+                console.error('[DEBUG] Error fetching balance:', error);
+                log(`Error fetching balance: ${error.message}`, 'error');
             }
         }
 
@@ -761,9 +844,17 @@
         // Check if token is available on current network
         function isTokenAvailable(tokenSymbol) {
             const token = TOKENS[tokenSymbol];
-            if (!token) return false;
-            if (!state.currentChainId) return token.isNative; // Only native if no chain detected
-            return token.chains.includes(state.currentChainId);
+            if (!token) {
+                console.log(`[DEBUG] Token ${tokenSymbol} not found in TOKENS`);
+                return false;
+            }
+            if (!state.currentChainId) {
+                console.log(`[DEBUG] No chainId set, defaulting to native only for ${tokenSymbol}`);
+                return token.isNative;
+            }
+            const available = token.chains.includes(state.currentChainId);
+            console.log(`[DEBUG] Token ${tokenSymbol}: chainId=${state.currentChainId}, supportedChains=[${token.chains.join(',')}], available=${available}`);
+            return available;
         }
 
         // Get available tokens for current network
@@ -1449,6 +1540,41 @@
             btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
             log(`Jstz identity connected: ${state.jstzAddress}`, 'success');
         });
+
+        // Listen for MetaMask network/account changes
+        if (typeof window.ethereum !== 'undefined') {
+            window.ethereum.on('chainChanged', async (chainId) => {
+                const newChainId = parseInt(chainId, 16);
+                console.log('[DEBUG] Network changed to chainId:', newChainId);
+                log(`Network changed! Reconnecting...`, 'warning');
+                
+                // Reconnect with new network
+                await connectEtherlink();
+                await fetchAllBalances();
+                renderTokenDropdown();
+            });
+            
+            window.ethereum.on('accountsChanged', async (accounts) => {
+                console.log('[DEBUG] Account changed to:', accounts[0]);
+                if (accounts.length > 0) {
+                    log(`Account changed! Reconnecting...`, 'warning');
+                    await connectEtherlink();
+                    await fetchAllBalances();
+                    
+                    // Update wallet button
+                    const textEl = document.getElementById('wallet-etherlink-text');
+                    if (textEl) {
+                        const shortAddr = `${accounts[0].substring(0, 6)}...${accounts[0].slice(-4)}`;
+                        textEl.innerText = shortAddr;
+                    }
+                } else {
+                    log(`Wallet disconnected`, 'warning');
+                    updateNetworkBadge(0, 'Not Connected');
+                }
+            });
+            
+            console.log('[DEBUG] MetaMask event listeners attached');
+        }
 
     </script>
 </body>
