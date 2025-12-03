@@ -492,7 +492,7 @@
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm text-gray-400 mb-1">Timelock (Mins)</label>
-                                    <input type="number" value="60" class="w-full input-field rounded-lg p-3 text-white font-mono focus:outline-none">
+                                    <input type="number" id="timelock-input" value="60" class="w-full input-field rounded-lg p-3 text-white font-mono focus:outline-none">
                                 </div>
                                 <div class="flex items-end">
                                     <div class="text-xs text-gray-500 mb-3">
@@ -1601,7 +1601,7 @@
             const btnMySwaps = document.getElementById('tab-myswaps');
             const actionBtn = document.getElementById('main-action-btn');
             const secretSection = document.getElementById('secret-section');
-            const timelockInput = document.querySelector('input[type="number"][value="60"]');
+            const timelockInput = document.getElementById('timelock-input');
             
             // Content Sections
             const initiateJoinContent = document.getElementById('initiate-join-content');
@@ -1744,7 +1744,7 @@
             const btn = document.getElementById('main-action-btn');
             const amount = document.getElementById('amount-input').value;
             const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
-            const timelockInput = document.querySelector('input[type="number"][value="60"]') || document.querySelector('input[type="number"]');
+            const timelockInput = document.getElementById('timelock-input');
             const timelockMins = parseInt(timelockInput?.value || 60);
             
             // ========== INPUT VALIDATION ==========
@@ -1885,7 +1885,7 @@
             const amount = document.getElementById('amount-input').value;
             const hashInput = document.getElementById('hash-input');
             const hashlock = hashInput.value;
-            const timelockInput = document.querySelector('input[type="number"]');
+            const timelockInput = document.getElementById('timelock-input');
             const timelockMins = parseInt(timelockInput?.value || 30);
 
             // ========== INPUT VALIDATION ==========
