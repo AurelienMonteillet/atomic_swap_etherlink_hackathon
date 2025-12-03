@@ -106,7 +106,7 @@
         }
 
         // Inject and poll Jstz operation
-        async function injectJstzOperation(operation, signature, rpcUrl = 'https://sandbox.jstz.info') {
+        async function injectJstzOperation(operation, signature, rpcUrl = 'https://privatenet.jstz.info') {
             const response = await fetch(`${rpcUrl}/operations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -125,7 +125,7 @@
         }
 
         // Poll for operation result
-        async function pollJstzOperation(operationHash, rpcUrl = 'https://sandbox.jstz.info', maxAttempts = 30) {
+        async function pollJstzOperation(operationHash, rpcUrl = 'https://privatenet.jstz.info', maxAttempts = 30) {
             for (let i = 0; i < maxAttempts; i++) {
                 try {
                     const response = await fetch(`${rpcUrl}/operations/${operationHash}`);
@@ -717,9 +717,9 @@
             },
             // Jstz HTLC Smart Function
             jstz: {
-                // Jstz Public Sandbox - accessible to everyone
-                rpcUrl: 'https://sandbox.jstz.info',
-                network: 'sandbox',
+                // Jstz Privatenet - accessible to everyone
+                rpcUrl: 'https://privatenet.jstz.info',
+                network: 'privatenet',
                 functionAddress: 'jstz://htlc/',
                 contractAddress: 'KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb'
             }
@@ -972,7 +972,15 @@
                     setChain('etherlink');
                 }
                 
-                log('🔗 Etherlink mode: You can initiate swaps FROM Etherlink TO Jstz', 'system');
+                log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+                log('🔗 MODE ETHERLINK ACTIVÉ (Vous êtes ALICE)', 'success');
+                log('📍 Direction: Etherlink → Jstz', 'info');
+                log('', 'system');
+                log('✅ Vous pouvez INITIER un nouveau swap:', 'success');
+                log('   1. Cliquez "Initiate" pour générer un hash', 'system');
+                log('   2. Cliquez "Initiate Swap" pour verrouiller vos XTZ', 'system');
+                log('   3. Partagez le HASH avec Bob', 'system');
+                log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
                 
             } else if (connectedWallet === 'jstz') {
                 // Jstz wallet connected
@@ -1000,7 +1008,14 @@
                     setChain('jstz');
                 }
                 
-                log('🔗 Jstz mode: You can initiate swaps FROM Jstz TO Etherlink', 'system');
+                log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+                log('🔗 MODE JSTZ ACTIVÉ (Vous êtes BOB)', 'warning');
+                log('📍 Direction: Jstz → Etherlink', 'info');
+                log('', 'system');
+                log('⚠️ IMPORTANT: Pour initier un swap depuis Jstz:', 'warning');
+                log('   Alice doit d\'abord avoir locké sur Etherlink!', 'info');
+                log('   Utilisez "Join" et collez le hash d\'Alice.', 'system');
+                log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
                 
             } else {
                 // No wallet connected - enable both
@@ -1237,7 +1252,7 @@
             
             if (!hasExtension) {
                 // No extension - show CLI command
-                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n sandbox -m POST -d '${JSON.stringify(body || {})}'`;
+                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
                 log(`⚠️ Jstz wallet extension not detected`, 'warning');
                 log(`📋 Run this CLI command instead:`, 'system');
                 log(`<code class="bg-black/50 px-2 py-1 rounded text-xs break-all">${cliCmd}</code>`, 'info');
@@ -1269,7 +1284,7 @@
                 console.log('[JSTZ] Sign response:', signResponse);
                 
                 // Inject the signed operation
-                log(`📡 Injecting operation to Jstz sandbox...`, 'warning');
+                log(`📡 Injecting operation to Jstz privatenet...`, 'warning');
                 
                 const injectResponse = await fetch(`${rpcUrl}/operations`, {
                     method: 'POST',
@@ -1307,7 +1322,7 @@
                 log(`❌ Jstz error: ${error.message}`, 'error');
                 
                 // Fallback to CLI
-                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n sandbox -m POST -d '${JSON.stringify(body || {})}'`;
+                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
                 log(`💡 Fallback - use CLI: <code class="bg-black/50 px-2 py-1 rounded text-xs">${cliCmd}</code>`, 'system');
                 
                 throw error;
@@ -1679,7 +1694,13 @@
                 actionBtn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>`;
                 actionBtn.className = "btn-primary w-full py-4 rounded-xl text-lg shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-2 group";
                 
-                log("Switched to Initiator Mode (Alice)", 'info');
+                log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
+                log("👤 MODE: ALICE (Initiator)", 'success');
+                log("📋 Vous CRÉEZ un nouveau swap", 'info');
+                log("1️⃣ Générez un secret et un hash", 'system');
+                log("2️⃣ Cliquez 'Initiate Swap' pour verrouiller vos fonds", 'system');
+                log("3️⃣ Partagez le HASH avec Bob (pas le secret!)", 'system');
+                log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             } else {
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
                 
@@ -1706,7 +1727,14 @@
                 actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
                 actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
                 
-                log("Switched to Participant Mode (Bob). Enter HashLock manually.", 'info');
+                log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
+                log("👤 MODE: BOB (Participant)", 'warning');
+                log("📋 Vous RÉPONDEZ à un swap existant", 'info');
+                log("⚠️ PRÉREQUIS: Alice doit avoir DÉJÀ verrouillé ses fonds!", 'warning');
+                log("1️⃣ Collez le HASH reçu d'Alice", 'system');
+                log("2️⃣ Le système vérifie qu'Alice a bien locké", 'system');
+                log("3️⃣ Cliquez 'Match Swap' pour verrouiller vos fonds", 'system');
+                log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             }
         }
 
@@ -1856,8 +1884,19 @@
                 updateProgress(2);
                 btn.innerHTML = `<span>Waiting for Bob on Jstz...</span>`;
                 
-                log(`Share this HashLock with Bob: ${state.hash}`, 'system');
-                log(`Bob must lock funds on Jstz with the same HashLock`, 'info');
+                log(``, 'system');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🎉 SWAP INITIÉ AVEC SUCCÈS!`, 'success');
+                log(``, 'system');
+                log(`📋 PROCHAINE ÉTAPE:`, 'warning');
+                log(`   Partagez ce HASH avec Bob:`, 'info');
+                log(`   ${state.hash}`, 'system');
+                log(``, 'system');
+                log(`👤 BOB DOIT:`, 'info');
+                log(`   1. Se connecter avec son wallet Jstz`, 'system');
+                log(`   2. Cliquer sur "Join" et coller le hash`, 'system');
+                log(`   3. Cliquer "Match Swap" pour verrouiller ses fonds`, 'system');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.currentSwapId, state.secret);
@@ -1923,9 +1962,20 @@
             const aliceSwap = await verifySwapOnEtherlink(hashlock, SwapState.ACTIVE);
             
             if (!aliceSwap.valid) {
-                log(`❌ Alice's swap not found on Etherlink!`, 'error');
-                log(`Make sure Alice has initiated the swap first with this HashLock`, 'system');
-                log(`HashLock: ${hashlock.substring(0, 30)}...`, 'info');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`❌ ERREUR: Aucun swap trouvé sur Etherlink!`, 'error');
+                log(``, 'system');
+                log(`📋 Ce que ça signifie:`, 'warning');
+                log(`   Alice n'a pas encore verrouillé ses fonds`, 'info');
+                log(`   avec ce HashLock sur Etherlink.`, 'info');
+                log(``, 'system');
+                log(`✅ Ce que vous devez faire:`, 'success');
+                log(`   1. Demandez à Alice de d'abord initier le swap`, 'system');
+                log(`   2. Alice doit cliquer "From Etherlink" avec ce hash`, 'system');
+                log(`   3. Puis revenez ici pour "Match Swap"`, 'system');
+                log(``, 'system');
+                log(`🔑 HashLock attendu: ${hashlock.substring(0, 20)}...`, 'info');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
                 return;
@@ -1996,21 +2046,30 @@
                 state.currentSwapId = hashlock;
                 state.hash = hashlock;
                 
-                log(`✅ Swap initiated on Jstz!`, 'success');
-                log(`Funds Locked: ${amount} XTZ`, 'success');
+                log(``, 'system');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`🎉 SWAP MATCHÉ AVEC SUCCÈS!`, 'success');
+                log(`💰 Fonds verrouillés: ${amount} XTZ`, 'success');
+                log(``, 'system');
+                log(`📋 PROCHAINES ÉTAPES:`, 'warning');
+                log(`   1. Attendez qu'Alice claim vos fonds sur Jstz`, 'info');
+                log(`   2. Quand elle claim, le SECRET sera révélé`, 'info');
+                log(`   3. Utilisez ce secret pour claim sur Etherlink!`, 'info');
+                log(``, 'system');
+                log(`⏰ IMPORTANT: Claimez avant l'expiration du swap d'Alice!`, 'warning');
+                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(3);
-                log(`Waiting for Alice to reveal secret...`, 'info');
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.hash, null);
-                log("Go to 'Redeem / Refund' tab to claim (when secret revealed)", 'system');
+                log("Allez sur l'onglet 'Redeem / Refund' quand le secret est révélé", 'system');
                 
                 btn.innerHTML = `<span>Waiting for Secret...</span>`;
                 
                 // Poll for secret revelation or enable manual claim
                 setTimeout(() => {
-                    log("Ready to claim on Etherlink (when Alice reveals secret)", 'system');
+                    log("Prêt à claim sur Etherlink (quand Alice révèle le secret)", 'system');
                     btn.disabled = false;
                     btn.innerHTML = `<span>Waiting for Secret...</span>`;
                     // No onClick needed here, user should go to Redeem tab

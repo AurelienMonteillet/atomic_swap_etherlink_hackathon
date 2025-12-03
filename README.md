@@ -10,7 +10,7 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 | Network | Contract | Address |
 |---------|----------|---------|
 | **Etherlink Testnet** | HTLC Solidity | `0x79826f6Ab82C24395123f8419E3aFb995d906bAd` |
-| **Jstz Sandbox** | HTLC Smart Function | `KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb` |
+| **Jstz Privatenet** | HTLC Smart Function | `KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb` |
 
 ## 🚀 Quick Start
 
@@ -50,9 +50,9 @@ cd ../..
 ### 2. Configure Jstz Network
 
 ```bash
-jstz network add sandbox \
-  --octez-node-rpc-endpoint https://sandbox.jstz.info \
-  --jstz-node-endpoint https://sandbox.jstz.info
+jstz network add privatenet \
+  --octez-node-rpc-endpoint https://privatenet.jstz.info \
+  --jstz-node-endpoint https://privatenet.jstz.info
 ```
 
 ### 3. Configure MetaMask
@@ -116,7 +116,7 @@ EXPIRATION=$(($(date +%s) + 3600))  # 1 hour from now
 
 # Bob locks 10 XTZ with the same hash
 jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/initiate" \
-  -n sandbox -m POST \
+  -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"recipient\":null,\"expiration\":$EXPIRATION,\"amount\":\"10\"}"
 ```
 
@@ -140,7 +140,7 @@ SECRET="0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c"
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 
 jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/claim" \
-  -n sandbox -m POST \
+  -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"secret\":\"$SECRET\"}"
 ```
 
@@ -176,7 +176,7 @@ Bob uses the revealed secret to claim Alice's ETH:
 ```bash
 # Check Jstz swap status
 jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/swap/0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c" \
-  -n sandbox -m POST -d '{}'
+  -n privatenet -m POST -d '{}'
 ```
 
 Should show `"status": "CLAIMED"` ✅
@@ -242,7 +242,7 @@ npx hardhat test
 ### Jstz Health Check
 
 ```bash
-jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/" -n sandbox -m POST -d '{}'
+jstz run "jstz://KT19cEGFQGsmtSimKJQFzi9WYrsHGXofq8Hb/" -n privatenet -m POST -d '{}'
 ```
 
 ---
