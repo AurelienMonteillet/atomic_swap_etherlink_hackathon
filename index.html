@@ -287,19 +287,24 @@
                 <!-- Main Swap Card -->
                 <div class="glass-card rounded-2xl p-1">
                     <!-- Tabs -->
-                    <div class="flex p-1 bg-black/20 rounded-t-xl">
+                    <div class="grid grid-cols-3 gap-1 p-1 bg-black/20 rounded-t-xl">
                         <button onclick="setTab('create')" id="tab-create" class="flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-ether-border shadow-lg transition-all">
-                            Initiate Swap (Alice)
+                            Initiate (Alice)
                         </button>
                         <button onclick="setTab('join')" id="tab-join" class="flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all">
-                            Join Swap (Bob)
+                            Join (Bob)
+                        </button>
+                        <button onclick="setTab('redeem')" id="tab-redeem" class="flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all">
+                            Redeem / Refund
                         </button>
                     </div>
 
-                    <div class="p-6 sm:p-8 space-y-6">
+                    <div class="p-6 sm:p-8">
                         
-                        <!-- Chain Selection -->
-                        <div class="grid grid-cols-2 gap-4 p-1 bg-black/20 rounded-xl">
+                        <!-- INITIATE & JOIN CONTENT -->
+                        <div id="initiate-join-content" class="space-y-6">
+                            <!-- Chain Selection -->
+                            <div class="grid grid-cols-2 gap-4 p-1 bg-black/20 rounded-xl">
                             <button onclick="setChain('etherlink')" id="chain-etherlink" class="relative py-3 rounded-lg border border-ether-green bg-ether-green/10 text-white transition-all group overflow-hidden">
                                 <div class="flex items-center justify-center gap-2 relative z-10">
                                     <i class="fa-brands fa-ethereum text-ether-green"></i>
@@ -406,49 +411,62 @@
                             <span>Initiate Swap</span>
                             <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
                         </button>
+                        </div> <!-- End initiate-join-content -->
 
-                        <!-- Claim & Refund Buttons (shown after swap initiated) -->
-                        <div id="claim-refund-section" class="mt-4 space-y-3" style="display: none;">
-                            <div class="border-t border-white/10 pt-4">
-                                <p class="text-xs text-gray-400 mb-3 text-center">Swap Actions</p>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <button onclick="claimSwap()" id="claim-btn" class="py-3 px-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-500/20">
-                                        <i class="fa-solid fa-hand-holding-dollar"></i>
-                                        <span>Claim</span>
+                        <!-- REDEEM / REFUND CONTENT -->
+                        <div id="redeem-content" class="hidden space-y-6">
+                            <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                                <p class="text-sm text-gray-400 mb-4 text-center">
+                                    <i class="fa-solid fa-circle-info mr-2"></i>
+                                    Enter the Swap ID (HashLock) to claim or refund funds.
+                                </p>
+                                
+                                <!-- Swap ID Input -->
+                                <div class="mb-4">
+                                    <label class="block text-xs text-gray-400 mb-1 flex items-center gap-1">
+                                        Swap ID / HashLock
+                                        <div class="relative group">
+                                            <span class="w-3 h-3 inline-flex items-center justify-center rounded-full bg-white/10 text-[8px] text-gray-400 cursor-help">?</span>
+                                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 border border-white/20 rounded text-[10px] text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                                                The HashLock used when initiating the swap
+                                            </div>
+                                        </div>
+                                    </label>
+                                    <input type="text" id="swap-id-input" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                                </div>
+                                
+                                <!-- Secret Input -->
+                                <div class="mb-6">
+                                    <label class="block text-xs text-gray-400 mb-1 flex items-center gap-1">
+                                        Secret (Required for Claim)
+                                        <div class="relative group">
+                                            <span class="w-3 h-3 inline-flex items-center justify-center rounded-full bg-white/10 text-[8px] text-gray-400 cursor-help">?</span>
+                                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 border border-white/20 rounded text-[10px] text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                                                The preimage/secret revealed by Alice to claim funds
+                                            </div>
+                                        </div>
+                                    </label>
+                                    <input type="text" id="secret-input-claim" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <button onclick="claimSwap()" id="claim-btn" class="py-4 px-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-green-500/20 group">
+                                        <div class="flex items-center gap-2">
+                                            <i class="fa-solid fa-hand-holding-dollar text-lg"></i>
+                                            <span>Claim Funds</span>
+                                        </div>
+                                        <span class="text-[10px] opacity-70 font-normal">Using Secret</span>
                                     </button>
-                                    <button onclick="refundSwap()" id="refund-btn" class="py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-500/20">
-                                        <i class="fa-solid fa-rotate-left"></i>
-                                        <span>Refund</span>
+                                    
+                                    <button onclick="refundSwap()" id="refund-btn" class="py-4 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-semibold flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-red-500/20 group">
+                                        <div class="flex items-center gap-2">
+                                            <i class="fa-solid fa-rotate-left text-lg"></i>
+                                            <span>Refund</span>
+                                        </div>
+                                        <span class="text-[10px] opacity-70 font-normal">After Timeout</span>
                                     </button>
                                 </div>
-                            </div>
-                            
-                            <!-- Swap ID Input for Claim/Refund -->
-                            <div class="mt-3">
-                                <label class="block text-xs text-gray-400 mb-1 flex items-center gap-1">
-                                    Swap ID / HashLock
-                                    <div class="relative group">
-                                        <span class="w-3 h-3 inline-flex items-center justify-center rounded-full bg-white/10 text-[8px] text-gray-400 cursor-help">?</span>
-                                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 border border-white/20 rounded text-[10px] text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                                            The HashLock used when initiating the swap
-                                        </div>
-                                    </div>
-                                </label>
-                                <input type="text" id="swap-id-input" placeholder="0x..." class="w-full input-field rounded-lg p-2 text-white font-mono text-xs focus:outline-none">
-                            </div>
-                            
-                            <!-- Secret Input for Claim -->
-                            <div id="secret-input-section">
-                                <label class="block text-xs text-gray-400 mb-1 flex items-center gap-1">
-                                    Secret (for Claim)
-                                    <div class="relative group">
-                                        <span class="w-3 h-3 inline-flex items-center justify-center rounded-full bg-white/10 text-[8px] text-gray-400 cursor-help">?</span>
-                                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 border border-white/20 rounded text-[10px] text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                                            The preimage/secret revealed by Alice to claim funds
-                                        </div>
-                                    </div>
-                                </label>
-                                <input type="text" id="secret-input-claim" placeholder="0x..." class="w-full input-field rounded-lg p-2 text-white font-mono text-xs focus:outline-none">
                             </div>
                         </div>
 
@@ -1169,9 +1187,14 @@
             state.mode = mode;
             const btnCreate = document.getElementById('tab-create');
             const btnJoin = document.getElementById('tab-join');
+            const btnRedeem = document.getElementById('tab-redeem');
             const actionBtn = document.getElementById('main-action-btn');
             const secretSection = document.getElementById('secret-section');
             const timelockInput = document.querySelector('input[type="number"][value="60"]');
+            
+            // Content Sections
+            const initiateJoinContent = document.getElementById('initiate-join-content');
+            const redeemContent = document.getElementById('redeem-content');
             
             // Input Containers
             const secretContainer = document.getElementById('secret-container');
@@ -1186,9 +1209,30 @@
             actionBtn.onclick = executeAction;
             actionBtn.classList.remove('bg-ether-green', 'text-black');
 
+            // Reset Tab Styles
+            const inactiveStyle = "flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all";
+            btnCreate.className = inactiveStyle;
+            btnJoin.className = inactiveStyle;
+            btnRedeem.className = inactiveStyle;
+
+            if (mode === 'redeem') {
+                // REDEEM MODE
+                btnRedeem.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-purple-600 shadow-lg transition-all";
+                
+                // Show Redeem content, hide Initiate content
+                initiateJoinContent.classList.add('hidden');
+                redeemContent.classList.remove('hidden');
+                
+                log("Switched to Redeem / Refund Mode", 'info');
+                return;
+            }
+            
+            // INITIATE or JOIN MODE
+            initiateJoinContent.classList.remove('hidden');
+            redeemContent.classList.add('hidden');
+
             if (mode === 'create') {
                 btnCreate.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-ether-border shadow-lg transition-all";
-                btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all";
                 
                 // SHOW Secret Gen UI
                 secretSection.classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
@@ -1215,7 +1259,6 @@
                 log("Switched to Initiator Mode (Alice)", 'info');
             } else {
                 btnJoin.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
-                btnCreate.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-all";
                 
                 // HIDE Secret Gen UI, SHOW Manual Hash Input
                 secretSection.classList.remove('opacity-50', 'pointer-events-none', 'grayscale'); // Keep active for input
@@ -1237,8 +1280,8 @@
                 // Enforce Timelock < Alice's (e.g. 30 mins)
                 if(timelockInput) timelockInput.value = 30;
 
-                actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>`;
-                actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg hover:bg-yellow-400 transition flex items-center justify-center gap-2 group";
+                actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
                 
                 log("Switched to Participant Mode (Bob). Enter HashLock manually.", 'info');
             }
@@ -1393,15 +1436,16 @@
                 log(`Share this HashLock with Bob: ${state.hash}`, 'system');
                 log(`Bob must lock funds on Jstz with the same HashLock`, 'info');
                 
-                // Show claim/refund section and pre-fill values
-                showClaimRefundSection(state.currentSwapId, state.secret);
+                // Pre-fill values for redeem tab
+                prefillRedeemForm(state.currentSwapId, state.secret);
+                log("Go to 'Redeem / Refund' tab to claim or refund later", 'system');
                 
                 // Enable claim button after Bob participates
                 setTimeout(() => {
                     log("Ready to claim on Jstz (when Bob has locked funds)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Claim on Jstz</span>`;
-                    btn.onclick = claimOnJstz;
+                    btn.innerHTML = `<span>Waiting for Bob...</span>`;
+                    // No onClick needed here, user should go to Redeem tab
                     updateProgress(3);
                 }, 2000);
 
@@ -1535,8 +1579,9 @@
                 updateProgress(3);
                 log(`Waiting for Alice to reveal secret...`, 'info');
                 
-                // Show claim/refund section
-                showClaimRefundSection(state.hash, null);
+                // Pre-fill values for redeem tab
+                prefillRedeemForm(state.hash, null);
+                log("Go to 'Redeem / Refund' tab to claim (when secret revealed)", 'system');
                 
                 btn.innerHTML = `<span>Waiting for Secret...</span>`;
                 
@@ -1544,8 +1589,8 @@
                 setTimeout(() => {
                     log("Ready to claim on Etherlink (when Alice reveals secret)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Claim on Etherlink</span>`;
-                    btn.onclick = claimOnEtherlink;
+                    btn.innerHTML = `<span>Waiting for Secret...</span>`;
+                    // No onClick needed here, user should go to Redeem tab
                 }, 2000);
 
             } catch (error) {
@@ -1815,29 +1860,21 @@
             }
         }
 
-        // Show/hide claim refund section
-        function showClaimRefundSection(swapId, secret) {
-            const section = document.getElementById('claim-refund-section');
+        // Pre-fill Redeem/Refund form
+        function prefillRedeemForm(swapId, secret) {
             const swapIdInput = document.getElementById('swap-id-input');
             const secretInput = document.getElementById('secret-input-claim');
             
-            if (section) {
-                section.style.display = 'block';
-            }
             if (swapIdInput && swapId) {
                 swapIdInput.value = swapId;
             }
             if (secretInput && secret) {
                 secretInput.value = secret;
             }
-        }
-        
-        // Hide claim refund section
-        function hideClaimRefundSection() {
-            const section = document.getElementById('claim-refund-section');
-            if (section) {
-                section.style.display = 'none';
-            }
+            
+            // Optional: auto-switch to redeem tab? Maybe too intrusive.
+            // setTab('redeem');
+            log('Swap details saved for Redeem/Refund tab', 'info');
         }
 
         // Unified claim function
@@ -1973,7 +2010,7 @@
                 log('✅ Refund successful on Etherlink!', 'success');
                 log(`${swap.amount} XTZ returned to your wallet`, 'success');
                 
-                hideClaimRefundSection();
+                // hideClaimRefundSection(); // No longer needed in redeem tab
                 updateProgress(1);
                 
             } catch (error) {
@@ -2067,7 +2104,7 @@
                 
                 log('✅ Refund successful on Jstz!', 'success');
                 log(`${swap.amount} XTZ returned to your wallet`, 'success');
-                hideClaimRefundSection();
+                // hideClaimRefundSection(); // No longer needed
                 updateProgress(1);
                 
             } catch (error) {
