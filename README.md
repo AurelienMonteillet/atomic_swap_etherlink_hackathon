@@ -19,7 +19,21 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 - **Node.js 18+**
 - **MetaMask** with Etherlink Testnet configured
 - **Jstz CLI**: `npm i -g @jstz-dev/cli`
+- **Jstz Wallet Extension** (optional but recommended): [Download from GitHub](https://github.com/jstz-dev/dev-wallet/releases)
 - **Python 3** (for local server)
+
+### Jstz Wallet Extension (Recommended)
+
+For the best experience, install the Jstz Chrome extension wallet:
+
+1. Download the latest release from [jstz-dev/dev-wallet](https://github.com/jstz-dev/dev-wallet/releases)
+2. Unzip the downloaded file
+3. Go to `chrome://extensions/` in Chrome
+4. Enable "Developer mode"
+5. Click "Load unpacked" and select the unzipped folder
+6. Create or import an account in the extension
+
+With the extension installed, all Jstz transactions will be signed automatically through the wallet popup.
 
 ### 1. Clone & Install
 

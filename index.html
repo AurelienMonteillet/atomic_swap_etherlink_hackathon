@@ -52,6 +52,93 @@
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
+    <!-- Jstz Wallet Extension Integration -->
+    <script>
+        // Jstz Signer Extension Types and Functions
+        const JstzSignerEventTypes = {
+            SIGN: 'JSTZ_SIGN_REQUEST_TO_EXTENSION',
+            GET_ADDRESS: 'JSTZ_GET_ADDRESS_REQUEST_TO_EXTENSION',
+            SIGN_RESPONSE: 'JSTZ_SIGN_RESPONSE_FROM_EXTENSION',
+            GET_ADDRESS_RESPONSE: 'JSTZ_GET_ADDRESS_RESPONSE_FROM_EXTENSION'
+        };
+
+        // Check if Jstz extension is installed
+        function isJstzExtensionInstalled() {
+            return typeof window.jstzCallSignerExtension === 'function';
+        }
+
+        // Request address from Jstz wallet extension
+        async function getJstzAddress() {
+            if (!isJstzExtensionInstalled()) {
+                throw new Error('Jstz wallet extension not installed. Please install from: https://github.com/jstz-dev/dev-wallet/releases');
+            }
+            
+            try {
+                const response = await window.jstzCallSignerExtension({
+                    type: JstzSignerEventTypes.GET_ADDRESS
+                });
+                return response.data;
+            } catch (error) {
+                throw new Error(`Failed to get Jstz address: ${error.message}`);
+            }
+        }
+
+        // Request signature from Jstz wallet extension
+        async function requestJstzSignature(operation) {
+            if (!isJstzExtensionInstalled()) {
+                throw new Error('Jstz wallet extension not installed');
+            }
+            
+            try {
+                const response = await window.jstzCallSignerExtension({
+                    type: JstzSignerEventTypes.SIGN,
+                    content: operation
+                });
+                return response.data;
+            } catch (error) {
+                throw new Error(`Failed to sign Jstz operation: ${error.message}`);
+            }
+        }
+
+        // Inject and poll Jstz operation
+        async function injectJstzOperation(operation, signature, rpcUrl = 'https://sandbox.jstz.info') {
+            const response = await fetch(`${rpcUrl}/operations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    inner: operation,
+                    signature: signature
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Jstz injection failed: ${errorText}`);
+            }
+            
+            return await response.json();
+        }
+
+        // Poll for operation result
+        async function pollJstzOperation(operationHash, rpcUrl = 'https://sandbox.jstz.info', maxAttempts = 30) {
+            for (let i = 0; i < maxAttempts; i++) {
+                try {
+                    const response = await fetch(`${rpcUrl}/operations/${operationHash}`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.status === 'applied' || result.status === 'failed') {
+                            return result;
+                        }
+                    }
+                } catch (e) {
+                    // Continue polling
+                }
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            throw new Error('Operation polling timeout');
+        }
+    </script>
     <!-- Automated Test Suite (run runAllTests() in console) -->
     <script src="test-scenarios.js"></script>
 
@@ -1130,67 +1217,133 @@
         // Jstz API calls
         /**
          * Jstz Request Handler
-         * Note: Jstz sandbox doesn't expose a standard REST API
-         * Transactions must be signed via jstz CLI or dev-wallet
-         * 
-         * For the hackathon demo, this simulates the expected behavior
-         * and logs the equivalent jstz CLI command
+         * Uses Jstz wallet extension if available, otherwise shows CLI commands
          */
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder('utf-8');
+        
         async function jstzRequest(method, path, body = null) {
             const contractAddress = CONFIG.jstz.contractAddress;
-            const fullPath = `jstz://${contractAddress}${path}`;
+            const rpcUrl = CONFIG.jstz.rpcUrl;
             
-            // Log the equivalent jstz CLI command
-            const cliCmd = `jstz run "${fullPath}" -n dev -m POST -d '${JSON.stringify(body)}'`;
-            console.log('[JSTZ] Equivalent CLI command:', cliCmd);
             log(`📤 Jstz: ${method} ${path}`, 'system');
             
-            // For demo: simulate successful response based on endpoint
-            // In production, this would use the Jstz dev-wallet extension
+            // Check if extension is available
+            const hasExtension = isJstzExtensionInstalled();
+            
+            if (!hasExtension) {
+                // No extension - show CLI command
+                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n sandbox -m POST -d '${JSON.stringify(body || {})}'`;
+                log(`⚠️ Jstz wallet extension not detected`, 'warning');
+                log(`📋 Run this CLI command instead:`, 'system');
+                log(`<code class="bg-black/50 px-2 py-1 rounded text-xs break-all">${cliCmd}</code>`, 'info');
+                
+                // Return simulated response for demo
+                return simulateJstzResponse(path, body);
+            }
+            
+            // Extension available - use it!
+            try {
+                log(`🔐 Requesting signature from Jstz wallet...`, 'warning');
+                
+                // Build the operation
+                const operation = {
+                    _type: 'RunFunction',
+                    uri: `jstz://${contractAddress}${path}`,
+                    method: 'POST',
+                    headers: {},
+                    body: body ? Array.from(encoder.encode(JSON.stringify(body))) : [],
+                    gasLimit: 100000
+                };
+                
+                console.log('[JSTZ] Operation to sign:', operation);
+                
+                // Request signature from extension
+                const signResponse = await requestJstzSignature(operation);
+                
+                log(`✅ Signature received from ${signResponse.accountAddress.substring(0, 10)}...`, 'success');
+                console.log('[JSTZ] Sign response:', signResponse);
+                
+                // Inject the signed operation
+                log(`📡 Injecting operation to Jstz sandbox...`, 'warning');
+                
+                const injectResponse = await fetch(`${rpcUrl}/operations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        inner: signResponse.operation,
+                        signature: signResponse.signature
+                    })
+                });
+                
+                if (!injectResponse.ok) {
+                    const errorText = await injectResponse.text();
+                    throw new Error(`Injection failed: ${errorText}`);
+                }
+                
+                const result = await injectResponse.json();
+                console.log('[JSTZ] Injection result:', result);
+                
+                // Parse response body if present
+                let parsedResult = result;
+                if (result.result?.inner?.body) {
+                    try {
+                        const bodyBytes = new Uint8Array(result.result.inner.body);
+                        parsedResult = JSON.parse(decoder.decode(bodyBytes));
+                    } catch (e) {
+                        // Keep original result
+                    }
+                }
+                
+                log(`✅ Jstz operation successful!`, 'success');
+                return parsedResult;
+                
+            } catch (error) {
+                console.error('[JSTZ] Extension error:', error);
+                log(`❌ Jstz error: ${error.message}`, 'error');
+                
+                // Fallback to CLI
+                const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n sandbox -m POST -d '${JSON.stringify(body || {})}'`;
+                log(`💡 Fallback - use CLI: <code class="bg-black/50 px-2 py-1 rounded text-xs">${cliCmd}</code>`, 'system');
+                
+                throw error;
+            }
+        }
+        
+        // Simulate Jstz response for demo when extension not available
+        function simulateJstzResponse(path, body) {
             if (path === '/initiate') {
-                log(`✨ Jstz initiate called with hashlock: ${body.hashLock?.substring(0,20)}...`, 'info');
                 return {
                     success: true,
                     event: 'SwapInitiated',
                     data: {
-                        hashlock: body.hashLock,
+                        hashlock: body?.hashLock || body?.hashlock,
                         sender: state.jstzAddress || 'tz1...',
-                        recipient: body.receiver,
-                        amount: body.amount,
-                        expiration: body.expiration,
+                        amount: body?.amount,
                         status: 'OPEN'
                     },
-                    message: 'Swap initiated on Jstz (sandbox)'
+                    simulated: true
                 };
             }
             
             if (path === '/claim') {
-                log(`✨ Jstz claim called with hashlock: ${body.hashLock?.substring(0,20)}...`, 'info');
                 return {
                     success: true,
                     event: 'SwapClaimed',
-                    data: {
-                        hashlock: body.hashLock,
-                        secret: body.secret
-                    },
-                    message: 'Swap claimed on Jstz'
+                    data: { hashlock: body?.hashLock || body?.hashlock },
+                    simulated: true
                 };
             }
             
             if (path === '/refund') {
-                log(`✨ Jstz refund called with hashlock: ${body.hashLock?.substring(0,20)}...`, 'info');
                 return {
                     success: true,
                     event: 'SwapRefunded',
-                    message: 'Swap refunded on Jstz'
+                    simulated: true
                 };
             }
             
-            if (path === '/getswap' || path.startsWith('/swap/')) {
-                return { found: false };
-            }
-            
-            return { error: 'Unknown endpoint' };
+            return { found: false, simulated: true };
         }
         
 
@@ -3097,17 +3250,45 @@
                 return;
             }
             
-            // Jstz connection (simulated - real implementation needs jstz CLI auth or dev-wallet)
-            // In production, this would open the Jstz dev-wallet extension
-            state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
-            textEl.innerText = 'tz1...FTP';
-            btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
-            
-            // Update UI
-            updateWalletConnectionUI('jstz');
-            
-            log(`Jstz identity connected: ${state.jstzAddress}`, 'success');
-            log('Note: Using sandbox account (dev-wallet needed for production)', 'system');
+            // Jstz connection - try extension first, fallback to simulated
+            try {
+                if (isJstzExtensionInstalled()) {
+                    log('🔐 Connecting to Jstz wallet extension...', 'warning');
+                    
+                    const addressData = await getJstzAddress();
+                    state.jstzAddress = addressData.address || addressData;
+                    
+                    const shortAddr = `${state.jstzAddress.substring(0, 6)}...${state.jstzAddress.slice(-3)}`;
+                    textEl.innerText = shortAddr;
+                    btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
+                    
+                    updateWalletConnectionUI('jstz');
+                    
+                    log(`✅ Jstz wallet connected: ${state.jstzAddress}`, 'success');
+                    log('Transactions will be signed by your wallet extension', 'system');
+                } else {
+                    // No extension - use simulated mode
+                    state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
+                    textEl.innerText = 'tz1...FTP (demo)';
+                    btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
+                    
+                    updateWalletConnectionUI('jstz');
+                    
+                    log(`⚠️ Jstz wallet extension not found`, 'warning');
+                    log(`Using demo mode - CLI commands will be shown`, 'system');
+                    log(`Install wallet: <a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-ether-green hover:underline">github.com/jstz-dev/dev-wallet</a>`, 'info');
+                }
+            } catch (error) {
+                console.error('[JSTZ] Connection error:', error);
+                log(`❌ Jstz connection error: ${error.message}`, 'error');
+                
+                // Fallback to demo mode
+                state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
+                textEl.innerText = 'tz1...FTP (demo)';
+                btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
+                updateWalletConnectionUI('jstz');
+                log('Falling back to demo mode', 'system');
+            }
         });
 
         // Listen for MetaMask network/account changes
