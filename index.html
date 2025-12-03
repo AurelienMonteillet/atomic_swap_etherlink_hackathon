@@ -65,7 +65,11 @@
 
         // Check if Jstz extension is installed
         function isJstzExtensionInstalled() {
-            return typeof window.jstzCallSignerExtension === 'function';
+            try {
+                return typeof window.jstzCallSignerExtension === 'function';
+            } catch (e) {
+                return false;
+            }
         }
 
         // Request address from Jstz wallet extension
@@ -3256,9 +3260,20 @@
                     log('🔐 Connecting to Jstz wallet extension...', 'warning');
                     
                     const addressData = await getJstzAddress();
-                    state.jstzAddress = addressData.address || addressData;
+                    console.log('[JSTZ] Address response:', addressData);
                     
-                    const shortAddr = `${state.jstzAddress.substring(0, 6)}...${state.jstzAddress.slice(-3)}`;
+                    // Handle different response formats
+                    if (typeof addressData === 'string') {
+                        state.jstzAddress = addressData;
+                    } else if (addressData && typeof addressData === 'object') {
+                        state.jstzAddress = addressData.address || addressData.accountAddress || addressData.data?.address || JSON.stringify(addressData);
+                    } else {
+                        throw new Error('Invalid address response from wallet');
+                    }
+                    
+                    // Safely create short address
+                    const addr = String(state.jstzAddress);
+                    const shortAddr = addr.length > 10 ? `${addr.substring(0, 6)}...${addr.slice(-3)}` : addr;
                     textEl.innerText = shortAddr;
                     btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
                     
