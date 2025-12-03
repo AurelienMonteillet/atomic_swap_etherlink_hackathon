@@ -1281,8 +1281,29 @@
             const timelockInput = document.querySelector('input[type="number"][value="60"]') || document.querySelector('input[type="number"]');
             const timelockMins = parseInt(timelockInput?.value || 60);
             
+            // ========== INPUT VALIDATION ==========
+            
+            // 1. Validate amount
             if (!amount || parseFloat(amount) <= 0) {
-                log("Please enter a valid amount", 'error');
+                log("❌ Please enter a valid amount (> 0)", 'error');
+                return;
+            }
+            
+            // 2. Validate hashlock exists and is properly formatted
+            if (!state.hash || !isValidHashLock(state.hash)) {
+                log("❌ Invalid HashLock. Generate a new secret first.", 'error');
+                return;
+            }
+            
+            // 3. Validate secret exists (needed for claiming later)
+            if (!state.secret) {
+                log("❌ Secret not found. Generate a new secret first.", 'error');
+                return;
+            }
+            
+            // 4. Validate timelock (minimum 5 minutes for safety)
+            if (timelockMins < 5) {
+                log("❌ Timelock must be at least 5 minutes for safety", 'error');
                 return;
             }
 
@@ -1301,17 +1322,52 @@
             }
 
             btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates...`;
+            
+            // ========== DUPLICATE CHECK ==========
+            // 5. Check if swap with this hashlock already exists
+            log('Checking if swap already exists...', 'warning');
+            const existingSwap = await verifySwapOnEtherlink(state.hash);
+            if (existingSwap.valid && existingSwap.swap) {
+                log(`❌ A swap with this HashLock already exists!`, 'error');
+                log(`State: ${['EMPTY', 'ACTIVE', 'CLAIMED', 'REFUNDED'][existingSwap.swap.state]}`, 'info');
+                log(`Generate a new secret to create a new swap.`, 'system');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log('✓ HashLock is unique', 'success');
+            
+            // ========== BALANCE CHECK ==========
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking balance...`;
+            
+            // 6. Check user has enough balance
+            const balance = await state.provider.getBalance(state.etherlinkAddress);
+            const amountWei = ethers.utils.parseEther(amount);
+            if (balance.lt(amountWei)) {
+                const balanceEth = ethers.utils.formatEther(balance);
+                log(`❌ Insufficient balance!`, 'error');
+                log(`Required: ${amount} XTZ, Available: ${parseFloat(balanceEth).toFixed(4)} XTZ`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log('✓ Sufficient balance', 'success');
+            
+            // ========== EXECUTE INITIATE ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Initiating Swap...`;
 
             try {
                 const recipient = counterpartyInput?.value || ethers.constants.AddressZero;
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
-                const amountWei = ethers.utils.parseEther(amount);
                 
                 log(`Initiating swap on Etherlink...`, 'warning');
-                log(`Amount: ${amount} ETH`, 'info');
+                log(`Amount: ${amount} XTZ`, 'info');
                 log(`HashLock: ${state.hash.substring(0, 18)}...`, 'info');
-                log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()}`, 'info');
+                log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()} (${timelockMins} mins)`, 'info');
+                if (recipient !== ethers.constants.AddressZero) {
+                    log(`Recipient: ${recipient.substring(0, 10)}...`, 'info');
+                }
 
                 const tx = await state.contract.initiateSwap(
                     recipient,
@@ -1365,17 +1421,87 @@
             const timelockInput = document.querySelector('input[type="number"]');
             const timelockMins = parseInt(timelockInput?.value || 30);
 
+            // ========== INPUT VALIDATION ==========
+            
+            // 1. Validate amount
             if (!amount || parseFloat(amount) <= 0) {
-                log("Please enter a valid amount", 'error');
+                log("❌ Please enter a valid amount (> 0)", 'error');
                 return;
             }
 
-            if (!hashlock || !hashlock.startsWith('0x')) {
-                log("Please enter a valid HashLock (0x...)", 'error');
+            // 2. Validate hashlock format
+            if (!hashlock || !isValidHashLock(hashlock)) {
+                log("❌ Please enter a valid HashLock (0x + 64 hex characters)", 'error');
+                log("Get the HashLock from Alice who initiated the swap", 'info');
                 return;
+            }
+            
+            // 3. Validate timelock (Bob's timelock should be shorter than Alice's)
+            if (timelockMins < 2) {
+                log("❌ Timelock must be at least 2 minutes", 'error');
+                return;
+            }
+            
+            // 4. Warning if timelock is too long (should be shorter than Alice's)
+            if (timelockMins >= 60) {
+                log("⚠️ Warning: Your timelock should be shorter than Alice's for safety", 'warning');
             }
 
             btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying Alice's swap...`;
+            
+            // ========== VERIFY ALICE'S SWAP EXISTS ==========
+            // 5. Check that Alice has already locked funds on Etherlink with this hashlock
+            log("Checking if Alice has locked funds on Etherlink...", 'warning');
+            const aliceSwap = await verifySwapOnEtherlink(hashlock, SwapState.ACTIVE);
+            
+            if (!aliceSwap.valid) {
+                log(`❌ Alice's swap not found on Etherlink!`, 'error');
+                log(`Make sure Alice has initiated the swap first with this HashLock`, 'system');
+                log(`HashLock: ${hashlock.substring(0, 30)}...`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            log(`✓ Found Alice's swap: ${aliceSwap.swap.amount} XTZ locked`, 'success');
+            log(`✓ Expires: ${aliceSwap.swap.expirationDate}`, 'success');
+            
+            // 6. Check Alice's swap hasn't expired
+            if (aliceSwap.swap.isExpired) {
+                log("❌ Alice's swap has expired! Don't lock your funds.", 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            // 7. Check there's enough time for Bob's timelock to be shorter
+            const aliceExpiration = aliceSwap.swap.expiration;
+            const now = Math.floor(Date.now() / 1000);
+            const aliceRemainingMins = Math.floor((aliceExpiration - now) / 60);
+            
+            if (timelockMins >= aliceRemainingMins) {
+                log(`❌ Your timelock (${timelockMins}m) must be shorter than Alice's remaining time (${aliceRemainingMins}m)`, 'error');
+                log(`Recommended: Set timelock to ${Math.floor(aliceRemainingMins / 2)} minutes`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            log(`✓ Timelock is safe (${timelockMins}m < ${aliceRemainingMins}m remaining)`, 'success');
+            
+            // ========== CHECK FOR DUPLICATE ON JSTZ ==========
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Checking for duplicates on Jstz...`;
+            
+            // 8. Check if swap with this hashlock already exists on Jstz
+            const existingJstzSwap = await verifySwapOnJstz(hashlock);
+            if (existingJstzSwap.valid && existingJstzSwap.swap) {
+                log(`❌ A swap with this HashLock already exists on Jstz!`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            // ========== EXECUTE INITIATE ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking on Jstz...`;
 
             try {
@@ -1383,13 +1509,22 @@
                 
                 log(`Initiating swap on Jstz...`, 'warning');
                 log(`HashLock: ${hashlock.substring(0, 18)}...`, 'info');
+                log(`Amount: ${amount} XTZ`, 'info');
+                log(`Timelock: ${timelockMins} minutes`, 'info');
                 
-                // Call Jstz smart function (simulated for now - real implementation needs jstz CLI)
-                // In production: jstz run jstz://htlc/initiate -d '{"hashlock": "...", ...}'
+                // Call Jstz smart function
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
                 
-                // Simulated success (replace with real jstz call)
-                await new Promise(r => setTimeout(r, 1500));
+                const response = await jstzRequest('POST', '/initiate', {
+                    hashLock: hashlock,
+                    amount: amount,
+                    receiver: aliceSwap.swap.sender, // Alice's address
+                    expiration: expiration
+                });
+                
+                if (response && response.error) {
+                    throw new Error(response.error);
+                }
                 
                 state.currentSwapId = hashlock;
                 state.hash = hashlock;
@@ -1423,22 +1558,94 @@
         // Alice claims on Jstz (reveals secret)
         async function claimOnJstz() {
             const btn = document.getElementById('main-action-btn');
+            const hashLock = state.currentSwapId || state.hash;
+            const secret = state.secret;
+            
+            // ========== SECURITY CHECKS ==========
+            
+            // 1. Validate inputs
+            if (!hashLock || !isValidHashLock(hashLock)) {
+                log('❌ Invalid or missing HashLock', 'error');
+                return;
+            }
+            
+            if (!secret) {
+                log('❌ Secret is required to claim', 'error');
+                return;
+            }
+            
+            // 2. Verify secret matches the hashlock
+            if (!verifySecretMatchesHash(secret, hashLock)) {
+                log('❌ Secret does not match HashLock!', 'error');
+                log('The provided secret hash does not equal the hashlock', 'error');
+                return;
+            }
+            log('✓ Secret matches HashLock', 'success');
             
             btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying swap on Jstz...`;
+            
+            // 3. Verify swap exists on Jstz and is ACTIVE
+            log('Verifying swap exists on Jstz...', 'warning');
+            const verification = await verifySwapOnJstz(hashLock);
+            
+            if (!verification.valid) {
+                log(`❌ ${verification.error}`, 'error');
+                log('Bob must lock funds on Jstz before you can claim!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Jstz</span>`;
+                return;
+            }
+            
+            const swap = verification.swap;
+            log(`✓ Swap found on Jstz: ${swap.amount} XTZ locked`, 'success');
+            
+            // 4. Check if swap is already claimed or refunded
+            if (swap.state === 'CLAIMED' || swap.state === 2) {
+                log('❌ Swap has already been claimed!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Jstz</span>`;
+                return;
+            }
+            
+            if (swap.state === 'REFUNDED' || swap.state === 3) {
+                log('❌ Swap has been refunded!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Jstz</span>`;
+                return;
+            }
+            
+            // 5. Check timelock hasn't expired
+            if (swap.isExpired) {
+                log('❌ Swap has expired! Cannot claim after timelock.', 'error');
+                log(`Expired at: ${swap.expirationDate}`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Jstz</span>`;
+                return;
+            }
+            log(`✓ Timelock valid until: ${swap.expirationDate}`, 'success');
+            
+            // ========== EXECUTE CLAIM ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Claiming on Jstz...`;
 
             try {
                 log(`Claiming on Jstz with secret...`, 'warning');
-                log(`Secret: ${state.secret.substring(0, 18)}...`, 'system');
+                log(`Secret: ${secret.substring(0, 18)}...`, 'system');
                 
-                // Call Jstz smart function
-                // In production: jstz run jstz://htlc/claim -d '{"hashlock": "...", "secret": "..."}'
+                // Call Jstz smart function to claim
                 log(`Calling Jstz HTLC: jstz://htlc/claim`, 'system');
                 
-                await new Promise(r => setTimeout(r, 1500));
+                const response = await jstzRequest('POST', '/claim', {
+                    hashLock: hashLock,
+                    secret: secret
+                });
+                
+                if (response && response.error) {
+                    throw new Error(response.error);
+                }
                 
                 log(`✅ Claimed on Jstz!`, 'success');
-                log(`Secret revealed: ${state.secret}`, 'system');
+                log(`Secret revealed: ${secret}`, 'system');
                 log(`Alice has received XTZ!`, 'success');
                 
                 updateProgress(4);
@@ -1451,6 +1658,160 @@
                 log(`Error: ${error.message}`, 'error');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Claim on Jstz</span>`;
+            }
+        }
+
+        // ============================================
+        // SWAP VERIFICATION FUNCTIONS
+        // ============================================
+        
+        // Swap states enum (matching Solidity contract)
+        const SwapState = {
+            EMPTY: 0,      // Swap doesn't exist
+            ACTIVE: 1,     // Swap is active, funds locked
+            CLAIMED: 2,    // Swap was claimed
+            REFUNDED: 3    // Swap was refunded
+        };
+        
+        // Verify swap exists and is in correct state on Etherlink
+        async function verifySwapOnEtherlink(swapId, expectedState = null) {
+            if (!state.contract) {
+                const connected = await connectEtherlink();
+                if (!connected) {
+                    return { valid: false, error: 'Could not connect to Etherlink' };
+                }
+            }
+            
+            if (!state.contract) {
+                return { valid: false, error: 'HTLC contract not available on this network' };
+            }
+            
+            try {
+                console.log('[VERIFY] Checking swap on Etherlink:', swapId);
+                const swap = await state.contract.getSwap(swapId);
+                
+                console.log('[VERIFY] Swap data:', {
+                    sender: swap.sender,
+                    receiver: swap.receiver,
+                    amount: swap.amount?.toString(),
+                    hashLock: swap.hashLock,
+                    expiration: swap.expiration?.toString(),
+                    state: swap.state
+                });
+                
+                // Check if swap exists (sender is not zero address)
+                if (swap.sender === ethers.constants.AddressZero) {
+                    return { 
+                        valid: false, 
+                        error: 'Swap does not exist on Etherlink',
+                        swap: null
+                    };
+                }
+                
+                // Check state if expected state provided
+                if (expectedState !== null && swap.state !== expectedState) {
+                    const stateNames = ['EMPTY', 'ACTIVE', 'CLAIMED', 'REFUNDED'];
+                    return {
+                        valid: false,
+                        error: `Swap is ${stateNames[swap.state]}, expected ${stateNames[expectedState]}`,
+                        swap
+                    };
+                }
+                
+                // Check expiration for claim (must not be expired)
+                const now = Math.floor(Date.now() / 1000);
+                const isExpired = now >= swap.expiration.toNumber();
+                
+                return {
+                    valid: true,
+                    swap: {
+                        sender: swap.sender,
+                        receiver: swap.receiver,
+                        amount: ethers.utils.formatEther(swap.amount),
+                        hashLock: swap.hashLock,
+                        expiration: swap.expiration.toNumber(),
+                        expirationDate: new Date(swap.expiration.toNumber() * 1000).toLocaleString(),
+                        state: swap.state,
+                        isExpired
+                    }
+                };
+                
+            } catch (error) {
+                console.error('[VERIFY] Error:', error);
+                return { 
+                    valid: false, 
+                    error: `Failed to verify swap: ${error.message}` 
+                };
+            }
+        }
+        
+        // Verify swap exists and is in correct state on Jstz
+        async function verifySwapOnJstz(hashLock) {
+            try {
+                console.log('[VERIFY] Checking swap on Jstz:', hashLock);
+                
+                const response = await jstzRequest('GET', `/swap/${hashLock}`);
+                
+                if (!response || response.error) {
+                    return {
+                        valid: false,
+                        error: response?.error || 'Swap does not exist on Jstz',
+                        swap: null
+                    };
+                }
+                
+                console.log('[VERIFY] Jstz swap data:', response);
+                
+                const now = Math.floor(Date.now() / 1000);
+                const isExpired = now >= response.expiration;
+                
+                return {
+                    valid: true,
+                    swap: {
+                        sender: response.sender,
+                        receiver: response.receiver,
+                        amount: response.amount,
+                        hashLock: response.hashLock,
+                        expiration: response.expiration,
+                        expirationDate: new Date(response.expiration * 1000).toLocaleString(),
+                        state: response.state,
+                        isExpired
+                    }
+                };
+                
+            } catch (error) {
+                console.error('[VERIFY] Jstz error:', error);
+                return {
+                    valid: false,
+                    error: `Failed to verify swap on Jstz: ${error.message}`,
+                    swap: null
+                };
+            }
+        }
+        
+        // Validate hashlock format
+        function isValidHashLock(hashLock) {
+            if (!hashLock) return false;
+            // Must be 0x followed by 64 hex characters (32 bytes)
+            return /^0x[a-fA-F0-9]{64}$/.test(hashLock);
+        }
+        
+        // Validate secret matches hashlock
+        function verifySecretMatchesHash(secret, hashLock) {
+            if (!secret || !hashLock) return false;
+            try {
+                const computedHash = ethers.utils.keccak256(secret);
+                const matches = computedHash.toLowerCase() === hashLock.toLowerCase();
+                console.log('[VERIFY] Secret verification:', {
+                    secret: secret.substring(0, 18) + '...',
+                    computedHash,
+                    expectedHash: hashLock,
+                    matches
+                });
+                return matches;
+            } catch (error) {
+                console.error('[VERIFY] Secret verification error:', error);
+                return false;
             }
         }
 
@@ -1530,13 +1891,24 @@
         
         // Refund on Etherlink (after timelock expires)
         async function refundOnEtherlink() {
+            const swapId = document.getElementById('swap-id-input')?.value || state.currentSwapId || state.hash;
+            
+            // ========== SECURITY CHECKS ==========
+            
+            // 1. Validate swap ID
+            if (!swapId || !isValidHashLock(swapId)) {
+                log('❌ Invalid or missing Swap ID', 'error');
+                return;
+            }
+            state.currentSwapId = swapId;
+            
             if (!state.contract) {
                 const connected = await connectEtherlink();
                 if (!connected) return;
             }
             
             if (!state.contract) {
-                log('HTLC contract not available', 'error');
+                log('❌ HTLC contract not available', 'error');
                 return;
             }
             
@@ -1544,27 +1916,76 @@
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i>`;
             
+            // 2. Verify swap exists on Etherlink and is ACTIVE
+            log('Verifying swap on Etherlink...', 'warning');
+            const verification = await verifySwapOnEtherlink(swapId, SwapState.ACTIVE);
+            
+            if (!verification.valid) {
+                log(`❌ ${verification.error}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            
+            const swap = verification.swap;
+            log(`✓ Swap found: ${swap.amount} XTZ`, 'success');
+            
+            // 3. Verify caller is the original sender (can only refund your own swap)
+            if (swap.sender.toLowerCase() !== state.etherlinkAddress.toLowerCase()) {
+                log('❌ Only the original sender can refund this swap', 'error');
+                log(`Sender: ${swap.sender}`, 'info');
+                log(`Your address: ${state.etherlinkAddress}`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            log('✓ You are the original sender', 'success');
+            
+            // 4. Check timelock HAS expired (required for refund)
+            if (!swap.isExpired) {
+                const now = Math.floor(Date.now() / 1000);
+                const remaining = swap.expiration - now;
+                const mins = Math.floor(remaining / 60);
+                const secs = remaining % 60;
+                log(`❌ Cannot refund yet - timelock has not expired`, 'error');
+                log(`Time remaining: ${mins}m ${secs}s`, 'warning');
+                log(`Expires at: ${swap.expirationDate}`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            log('✓ Timelock has expired, refund allowed', 'success');
+            
+            // ========== EXECUTE REFUND ==========
             try {
-                log('Attempting refund on Etherlink...', 'warning');
-                log(`Swap ID: ${state.currentSwapId.substring(0, 18)}...`, 'info');
+                log('Executing refund on Etherlink...', 'warning');
+                log(`Swap ID: ${swapId.substring(0, 18)}...`, 'info');
                 
-                const tx = await state.contract.refundSwap(state.currentSwapId);
+                const tx = await state.contract.refundSwap(swapId);
                 log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
                 
-                await tx.wait();
+                const receipt = await tx.wait();
+                
+                if (receipt.status !== 1) {
+                    throw new Error('Transaction failed on-chain');
+                }
                 
                 log('✅ Refund successful on Etherlink!', 'success');
-                log('Funds returned to your wallet', 'success');
+                log(`${swap.amount} XTZ returned to your wallet`, 'success');
                 
                 hideClaimRefundSection();
                 updateProgress(1);
                 
             } catch (error) {
+                let errorMsg = error.message;
                 if (error.message.includes('NotYetExpired') || error.message.includes('not yet expired')) {
-                    log('❌ Cannot refund yet - timelock has not expired', 'error');
-                } else {
-                    log(`Refund error: ${error.message}`, 'error');
+                    errorMsg = 'Timelock has not expired yet';
+                } else if (error.message.includes('OnlySender') || error.message.includes('not sender')) {
+                    errorMsg = 'Only the original sender can refund';
+                } else if (error.message.includes('SwapNotActive')) {
+                    errorMsg = 'Swap is not active (already claimed or refunded)';
                 }
+                log(`❌ Refund error: ${errorMsg}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
@@ -1573,45 +1994,169 @@
         
         // Refund on Jstz
         async function refundOnJstz() {
-            log('Attempting refund on Jstz...', 'warning');
+            const hashLock = document.getElementById('swap-id-input')?.value || state.currentSwapId || state.hash;
+            
+            // ========== SECURITY CHECKS ==========
+            
+            // 1. Validate hashlock
+            if (!hashLock || !isValidHashLock(hashLock)) {
+                log('❌ Invalid or missing HashLock', 'error');
+                return;
+            }
+            state.currentSwapId = hashLock;
+            
+            const btn = document.getElementById('refund-btn');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i>`;
+            
+            // 2. Verify swap exists on Jstz
+            log('Verifying swap on Jstz...', 'warning');
+            const verification = await verifySwapOnJstz(hashLock);
+            
+            if (!verification.valid) {
+                log(`❌ ${verification.error}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            
+            const swap = verification.swap;
+            log(`✓ Swap found: ${swap.amount} XTZ`, 'success');
+            
+            // 3. Check if already claimed or refunded
+            if (swap.state === 'CLAIMED' || swap.state === 2) {
+                log('❌ Swap has already been claimed!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            
+            if (swap.state === 'REFUNDED' || swap.state === 3) {
+                log('❌ Swap has already been refunded!', 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            
+            // 4. Check timelock HAS expired (required for refund)
+            if (!swap.isExpired) {
+                const now = Math.floor(Date.now() / 1000);
+                const remaining = swap.expiration - now;
+                const mins = Math.floor(remaining / 60);
+                const secs = remaining % 60;
+                log(`❌ Cannot refund yet - timelock has not expired`, 'error');
+                log(`Time remaining: ${mins}m ${secs}s`, 'warning');
+                log(`Expires at: ${swap.expirationDate}`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
+                return;
+            }
+            log('✓ Timelock has expired, refund allowed', 'success');
+            
+            // ========== EXECUTE REFUND ==========
+            log('Executing refund on Jstz...', 'warning');
             
             try {
                 const response = await jstzRequest('POST', '/refund', {
-                    hashLock: state.currentSwapId
+                    hashLock: hashLock
                 });
                 
-                if (response.success) {
-                    log('✅ Refund successful on Jstz!', 'success');
-                    hideClaimRefundSection();
-                } else {
-                    log(`Refund failed: ${response.error}`, 'error');
+                if (response && response.error) {
+                    throw new Error(response.error);
                 }
+                
+                log('✅ Refund successful on Jstz!', 'success');
+                log(`${swap.amount} XTZ returned to your wallet`, 'success');
+                hideClaimRefundSection();
+                updateProgress(1);
+                
             } catch (error) {
-                log(`Refund error: ${error.message}`, 'error');
+                log(`❌ Refund error: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i><span>Refund</span>`;
             }
         }
 
         // Bob claims on Etherlink (uses revealed secret)
         async function claimOnEtherlink() {
             const btn = document.getElementById('main-action-btn');
+            const swapId = state.currentSwapId || state.hash;
             
-            // Prompt for secret if not known
+            // ========== SECURITY CHECKS ==========
+            
+            // 1. Validate swap ID
+            if (!swapId || !isValidHashLock(swapId)) {
+                log('❌ Invalid or missing Swap ID', 'error');
+                return;
+            }
+            
+            // 2. Get secret (prompt if not available)
             let secret = state.secret;
+            if (!secret) {
+                secret = document.getElementById('secret-input-claim')?.value;
+            }
             if (!secret) {
                 secret = prompt("Enter the revealed secret (0x...):");
                 if (!secret) {
-                    log("Secret is required to claim", 'error');
+                    log("❌ Secret is required to claim", 'error');
                     return;
                 }
-                state.secret = secret;
             }
+            state.secret = secret;
+            
+            // 3. Verify secret format
+            if (!isValidHashLock(secret)) {
+                log('❌ Invalid secret format (must be 0x + 64 hex chars)', 'error');
+                return;
+            }
+            
+            // 4. Verify secret matches the hashlock
+            if (!verifySecretMatchesHash(secret, swapId)) {
+                log('❌ Secret does not match Swap ID (HashLock)!', 'error');
+                log('Make sure you have the correct secret from Alice', 'error');
+                return;
+            }
+            log('✓ Secret matches HashLock', 'success');
 
             if (!state.contract) {
                 const connected = await connectEtherlink();
                 if (!connected) return;
             }
+            
+            if (!state.contract) {
+                log('❌ HTLC contract not available', 'error');
+                return;
+            }
 
             btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying swap on Etherlink...`;
+            
+            // 5. Verify swap exists on Etherlink and is ACTIVE
+            log('Verifying swap exists on Etherlink...', 'warning');
+            const verification = await verifySwapOnEtherlink(swapId, SwapState.ACTIVE);
+            
+            if (!verification.valid) {
+                log(`❌ ${verification.error}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Etherlink</span>`;
+                return;
+            }
+            
+            const swap = verification.swap;
+            log(`✓ Swap found: ${swap.amount} XTZ locked by ${swap.sender.substring(0,10)}...`, 'success');
+            
+            // 6. Check timelock hasn't expired
+            if (swap.isExpired) {
+                log('❌ Swap has expired! Cannot claim after timelock.', 'error');
+                log(`Expired at: ${swap.expirationDate}`, 'info');
+                btn.disabled = false;
+                btn.innerHTML = `<span>Claim on Etherlink</span>`;
+                return;
+            }
+            log(`✓ Timelock valid until: ${swap.expirationDate}`, 'success');
+            
+            // ========== EXECUTE CLAIM ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Claiming on Etherlink...`;
 
             try {
@@ -1620,17 +2165,20 @@
                 // Convert secret to bytes
                 const secretBytes = ethers.utils.arrayify(secret);
                 
-                const tx = await state.contract.claimSwap(
-                    state.currentSwapId || state.hash,
-                    secretBytes
-                );
+                const tx = await state.contract.claimSwap(swapId, secretBytes);
 
                 log(`Transaction sent: ${tx.hash.substring(0, 18)}...`, 'warning');
                 
-                await tx.wait();
+                const receipt = await tx.wait();
+                
+                // Verify transaction was successful
+                if (receipt.status !== 1) {
+                    throw new Error('Transaction failed on-chain');
+                }
                 
                 log(`✅ Claimed on Etherlink!`, 'success');
-                log(`Bob has received ETH!`, 'success');
+                log(`Bob has received ${swap.amount} XTZ!`, 'success');
+                log(`Transaction: ${tx.hash}`, 'system');
                 
                 updateProgress(4);
                 
@@ -1639,7 +2187,16 @@
                 btn.disabled = true;
 
             } catch (error) {
-                log(`Error: ${error.message}`, 'error');
+                // Parse contract revert reasons
+                let errorMsg = error.message;
+                if (error.message.includes('SwapNotActive')) {
+                    errorMsg = 'Swap is not active (already claimed or refunded)';
+                } else if (error.message.includes('InvalidHashLock')) {
+                    errorMsg = 'Invalid secret - does not match hashlock';
+                } else if (error.message.includes('SwapExpired')) {
+                    errorMsg = 'Swap has expired';
+                }
+                log(`❌ Error: ${errorMsg}`, 'error');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Claim on Etherlink</span>`;
             }
