@@ -503,7 +503,14 @@
             "function transfer(address to, uint256 amount) returns (bool)"
         ];
 
-        // Etherlink Mainnet Tokens
+        // Network Chain IDs
+        const CHAIN_IDS = {
+            HARDHAT_LOCAL: 31337,
+            ETHERLINK_MAINNET: 42793,
+            ETHERLINK_TESTNET: 128123
+        };
+
+        // Etherlink Tokens (with network availability)
         const TOKENS = {
             XTZ: {
                 symbol: 'XTZ',
@@ -511,7 +518,8 @@
                 address: null, // Native token
                 decimals: 18,
                 icon: 'https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026',
-                isNative: true
+                isNative: true,
+                chains: [CHAIN_IDS.HARDHAT_LOCAL, CHAIN_IDS.ETHERLINK_MAINNET, CHAIN_IDS.ETHERLINK_TESTNET] // Available on all
             },
             WETH: {
                 symbol: 'WETH',
@@ -519,7 +527,8 @@
                 address: '0x86932ff467A7e055d679F7578A0A4F96Be287861',
                 decimals: 18,
                 icon: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=026',
-                isNative: false
+                isNative: false,
+                chains: [CHAIN_IDS.ETHERLINK_MAINNET] // Only on mainnet
             },
             USDT: {
                 symbol: 'USDT',
@@ -527,7 +536,8 @@
                 address: '0xf7f007dc8Cb507e25e8b7dbDa600c07FdCF9A75B',
                 decimals: 6,
                 icon: 'https://cryptologos.cc/logos/tether-usdt-logo.svg?v=026',
-                isNative: false
+                isNative: false,
+                chains: [CHAIN_IDS.ETHERLINK_MAINNET] // Only on mainnet
             },
             USDC: {
                 symbol: 'USDC',
@@ -535,7 +545,8 @@
                 address: '0x4C2AA252BEe766D3399850569713b55178934849',
                 decimals: 6,
                 icon: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.svg?v=026',
-                isNative: false
+                isNative: false,
+                chains: [CHAIN_IDS.ETHERLINK_MAINNET] // Only on mainnet
             }
         };
 
@@ -556,7 +567,8 @@
             currentSwapId: null,
             selectedToken: 'XTZ', // Default token
             tokenBalances: {},
-            tokenSelectorOpen: false
+            tokenSelectorOpen: false,
+            currentChainId: null // Current network chain ID
         };
 
         // Utils
@@ -618,6 +630,14 @@
                     log(`Connected to local node: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
                 }
                 
+                // Get current chain ID
+                const network = await state.provider.getNetwork();
+                state.currentChainId = network.chainId;
+                
+                // Log network info
+                const networkName = getNetworkName(state.currentChainId);
+                log(`Network: ${networkName} (chainId: ${state.currentChainId})`, 'info');
+                
                 // Initialize contract
                 state.contract = new ethers.Contract(
                     CONFIG.etherlink.contractAddress,
@@ -630,6 +650,34 @@
                 log(`Etherlink connection failed: ${error.message}`, 'error');
                 return false;
             }
+        }
+
+        // Get human-readable network name
+        function getNetworkName(chainId) {
+            switch (chainId) {
+                case CHAIN_IDS.HARDHAT_LOCAL: return 'Hardhat Local';
+                case CHAIN_IDS.ETHERLINK_MAINNET: return 'Etherlink Mainnet';
+                case CHAIN_IDS.ETHERLINK_TESTNET: return 'Etherlink Testnet';
+                default: return `Unknown (${chainId})`;
+            }
+        }
+
+        // Check if token is available on current network
+        function isTokenAvailable(tokenSymbol) {
+            const token = TOKENS[tokenSymbol];
+            if (!token) return false;
+            if (!state.currentChainId) return token.isNative; // Only native if no chain detected
+            return token.chains.includes(state.currentChainId);
+        }
+
+        // Get available tokens for current network
+        function getAvailableTokens() {
+            return Object.entries(TOKENS)
+                .filter(([symbol, token]) => isTokenAvailable(symbol))
+                .reduce((acc, [symbol, token]) => {
+                    acc[symbol] = token;
+                    return acc;
+                }, {});
         }
 
         // Jstz API calls
@@ -660,6 +708,11 @@
             
             const token = TOKENS[tokenSymbol];
             if (!token) return '0';
+            
+            // Check if token is available on current network
+            if (!isTokenAvailable(tokenSymbol)) {
+                return 'N/A';
+            }
 
             try {
                 if (token.isNative) {
@@ -673,8 +726,9 @@
                     return ethers.utils.formatUnits(balance, token.decimals);
                 }
             } catch (error) {
-                console.error(`Error fetching ${tokenSymbol} balance:`, error);
-                return '0';
+                // Token contract doesn't exist on this network
+                console.warn(`Token ${tokenSymbol} not available on current network`);
+                return 'N/A';
             }
         }
 
@@ -682,15 +736,22 @@
         async function fetchAllBalances() {
             if (!state.provider || !state.etherlinkAddress) return;
 
-            log('Fetching token balances...', 'system');
+            const availableTokens = getAvailableTokens();
+            const tokenCount = Object.keys(availableTokens).length;
+            log(`Fetching balances for ${tokenCount} token(s)...`, 'system');
             
             for (const [symbol, token] of Object.entries(TOKENS)) {
-                const balance = await getTokenBalance(symbol);
-                state.tokenBalances[symbol] = balance;
+                if (isTokenAvailable(symbol)) {
+                    const balance = await getTokenBalance(symbol);
+                    state.tokenBalances[symbol] = balance;
+                } else {
+                    state.tokenBalances[symbol] = 'N/A';
+                }
             }
 
             // Update UI
             updateBalanceDisplay();
+            renderTokenDropdown(); // Re-render with updated balances
             log('Balances updated', 'success');
         }
 
@@ -700,13 +761,17 @@
             const walletBalanceEl = document.getElementById('wallet-balance');
             
             if (balanceEl && state.selectedToken) {
-                const balance = state.tokenBalances[state.selectedToken] || '0';
-                const formatted = parseFloat(balance).toFixed(4);
-                balanceEl.innerText = `Balance: ${formatted} ${state.selectedToken}`;
+                const balance = state.tokenBalances[state.selectedToken];
+                if (balance === 'N/A' || !isTokenAvailable(state.selectedToken)) {
+                    balanceEl.innerText = `Balance: N/A (not on this network)`;
+                } else {
+                    const formatted = parseFloat(balance || '0').toFixed(4);
+                    balanceEl.innerText = `Balance: ${formatted} ${state.selectedToken}`;
+                }
             }
             
             // Update wallet button with XTZ balance
-            if (walletBalanceEl && state.tokenBalances['XTZ']) {
+            if (walletBalanceEl && state.tokenBalances['XTZ'] && state.tokenBalances['XTZ'] !== 'N/A') {
                 const xtzBalance = parseFloat(state.tokenBalances['XTZ']).toFixed(2);
                 walletBalanceEl.innerText = `${xtzBalance} XTZ`;
             }
@@ -757,23 +822,40 @@
             
             for (const [symbol, token] of Object.entries(TOKENS)) {
                 const balance = state.tokenBalances[symbol] || '0';
-                const formatted = parseFloat(balance).toFixed(4);
+                const isAvailable = isTokenAvailable(symbol);
                 const isSelected = symbol === state.selectedToken;
                 
+                // Format balance
+                let formattedBalance;
+                if (!isAvailable || balance === 'N/A') {
+                    formattedBalance = 'N/A';
+                } else {
+                    formattedBalance = parseFloat(balance).toFixed(4);
+                }
+                
                 const item = document.createElement('div');
-                item.className = `flex items-center justify-between p-3 hover:bg-white/10 cursor-pointer transition ${isSelected ? 'bg-ether-green/10' : ''}`;
-                item.onclick = () => selectToken(symbol);
+                item.className = `flex items-center justify-between p-3 transition ${
+                    isAvailable 
+                        ? `hover:bg-white/10 cursor-pointer ${isSelected ? 'bg-ether-green/10' : ''}` 
+                        : 'opacity-40 cursor-not-allowed'
+                }`;
+                
+                if (isAvailable) {
+                    item.onclick = () => selectToken(symbol);
+                }
+                
                 item.innerHTML = `
                     <div class="flex items-center gap-3">
-                        <img src="${token.icon}" class="w-8 h-8 rounded-full bg-white p-0.5" alt="${token.symbol}">
+                        <img src="${token.icon}" class="w-8 h-8 rounded-full bg-white p-0.5 ${!isAvailable ? 'grayscale' : ''}" alt="${token.symbol}">
                         <div>
-                            <div class="font-bold text-white">${token.symbol}</div>
+                            <div class="font-bold ${isAvailable ? 'text-white' : 'text-gray-500'}">${token.symbol}</div>
                             <div class="text-xs text-gray-400">${token.name}</div>
+                            ${!isAvailable ? '<div class="text-[10px] text-yellow-500">Mainnet only</div>' : ''}
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="text-sm font-mono text-white">${formatted}</div>
-                        ${!token.isNative ? `<div class="text-[10px] text-gray-500 truncate max-w-[80px]">${token.address.substring(0, 8)}...</div>` : ''}
+                        <div class="text-sm font-mono ${isAvailable ? 'text-white' : 'text-gray-500'}">${formattedBalance}</div>
+                        ${!token.isNative && token.address ? `<div class="text-[10px] text-gray-500 truncate max-w-[80px]">${token.address.substring(0, 8)}...</div>` : ''}
                     </div>
                 `;
                 dropdown.appendChild(item);
