@@ -524,12 +524,53 @@
                                 </div>
                                 <div id="hash-container">
                                     <span class="text-[10px] text-gray-400 uppercase block mb-1">HashLock (Public)</span>
-                                    <div class="relative">
+                                    <div class="relative flex gap-2">
                                         <input type="text" id="hash-input" class="w-full input-field rounded-lg p-3 text-sm font-mono text-gray-300" readonly value="Waiting...">
-                                        <button id="copy-hash-btn" onclick="copyToClipboard('hash-input')" class="absolute right-2 top-2 text-gray-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
+                                        <button id="copy-hash-btn" onclick="copyToClipboard('hash-input')" class="absolute right-10 top-2 text-gray-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
+                                        <button id="verify-swap-btn" onclick="verifyAliceSwapDetails()" class="hidden px-3 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 text-xs font-bold whitespace-nowrap transition">
+                                            <i class="fa-solid fa-magnifying-glass mr-1"></i> Verify
+                                        </button>
                                     </div>
                                 </div>
                             </div>
+                            
+                            <!-- Alice Swap Details (shown after verification in Join mode) -->
+                            <div id="alice-swap-details" class="hidden mt-4 p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                                        <i class="fa-solid fa-circle-check mr-1"></i> Alice's Swap Found
+                                    </span>
+                                    <span id="alice-swap-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400">OPEN</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3 text-xs">
+                                    <div>
+                                        <span class="text-gray-500 block">Amount Locked</span>
+                                        <span id="alice-swap-amount" class="text-white font-bold text-lg">-- XTZ</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 block">Expires In</span>
+                                        <span id="alice-swap-expiry" class="text-white font-mono">--:--:--</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 block">Sender (Alice)</span>
+                                        <span id="alice-swap-sender" class="text-gray-300 font-mono text-[10px]">0x...</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 block">Chain</span>
+                                        <span id="alice-swap-chain" class="text-ether-green font-medium">Etherlink</span>
+                                    </div>
+                                </div>
+                                <div class="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                                    <p class="text-xs text-gray-400">
+                                        <i class="fa-solid fa-triangle-exclamation text-yellow-500 mr-1"></i>
+                                        Review the amount before matching!
+                                    </p>
+                                    <button onclick="cancelJoinSwap()" class="text-xs text-red-400 hover:text-red-300 underline">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                            
                             <button id="regen-secret-btn" onclick="generateNewSecret()" class="mt-3 text-xs text-gray-400 hover:text-white underline decoration-dotted underline-offset-4">
                                 Generate New Secret
                             </button>
@@ -699,37 +740,55 @@
             <!-- Right Column: Info & Console -->
             <div class="lg:col-span-5 flex flex-col gap-6">
                 
-                <!-- Network Status -->
+                <!-- Network Status - Clickable links to deployed contracts -->
                 <div class="glass-card rounded-2xl p-6">
-                    <h3 class="text-sm font-mono text-gray-400 mb-4 uppercase tracking-wider">Network Bridge</h3>
+                    <h3 class="text-sm font-mono text-gray-400 mb-4 uppercase tracking-wider">Deployed Contracts</h3>
             
                     <div class="flex items-center justify-between relative">
-                        <!-- Left: Etherlink -->
-                        <div class="text-center z-10">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden group">
+                        <!-- Left: Etherlink Contract -->
+                        <a href="https://testnet.explorer.etherlink.com/address/0x79826f6Ab82C24395123f8419E3aFb995d906bAd" target="_blank" class="text-center z-10 group cursor-pointer">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 group-hover:border-green-500/50 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden transition-all group-hover:scale-105">
                                 <div class="absolute inset-0 bg-green-500/10 group-hover:bg-green-500/20 transition"></div>
                                 <i class="fa-brands fa-ethereum text-2xl text-green-400"></i>
                             </div>
-                            <div class="text-sm font-bold text-gray-200">Etherlink</div>
-                            <div class="text-[10px] text-green-500">Connected</div>
-                        </div>
+                            <div class="text-sm font-bold text-gray-200 group-hover:text-green-400 transition">Etherlink</div>
+                            <div class="text-[10px] text-green-500 flex items-center justify-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                Live
+                                <i class="fa-solid fa-external-link text-[8px] opacity-0 group-hover:opacity-100 transition"></i>
+                            </div>
+                        </a>
 
                         <!-- Center: Animation -->
                         <div class="flex-1 h-px bg-slate-700 mx-4 relative">
                             <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center z-20">
                                 <i class="fa-solid fa-arrow-right-arrow-left text-gray-500 text-xs"></i>
-                    </div>
-                            <div class="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-transparent to-green-500 opacity-50 animate-pulse"></div>
+                            </div>
+                            <div class="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-green-500/30 via-transparent to-yellow-500/30 animate-pulse"></div>
                         </div>
 
-                        <!-- Right: Jstz -->
-                        <div class="text-center z-10">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden group">
+                        <!-- Right: Jstz Contract -->
+                        <a href="https://privatenet.dashboard.jstz.info/smart-functions/KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE" target="_blank" class="text-center z-10 group cursor-pointer" title="KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 group-hover:border-jstz-accent/50 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden transition-all group-hover:scale-105">
                                 <div class="absolute inset-0 bg-yellow-500/10 group-hover:bg-yellow-500/20 transition"></div>
                                 <i class="fa-solid fa-layer-group text-2xl text-jstz-accent"></i>
+                            </div>
+                            <div class="text-sm font-bold text-gray-200 group-hover:text-jstz-accent transition">Jstz</div>
+                            <div class="text-[10px] text-jstz-accent flex items-center justify-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-jstz-accent animate-pulse"></span>
+                                Live
+                                <i class="fa-solid fa-external-link text-[8px] opacity-0 group-hover:opacity-100 transition"></i>
+                            </div>
+                        </a>
                     </div>
-                            <div class="text-sm font-bold text-gray-200">Jstz</div>
-                            <div class="text-[10px] text-gray-500">Waiting...</div>
+                    
+                    <!-- Contract addresses -->
+                    <div class="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500">
+                        <div class="truncate" title="0x79826f6Ab82C24395123f8419E3aFb995d906bAd">
+                            <span class="text-gray-600">ETH:</span> 0x79826...06bAd
+                        </div>
+                        <div class="truncate text-right" title="KT1VDySdkM5Q4Fi432U2FMYzzUTT6sw49ZcE">
+                            <span class="text-gray-600">JSTZ:</span> KT1VDy...49ZcE
                         </div>
                     </div>
                 </div>
@@ -896,7 +955,9 @@
             selectedToken: 'XTZ', // Default token
             tokenBalances: {},
             tokenSelectorOpen: false,
-            currentChainId: null // Current network chain ID
+            currentChainId: null, // Current network chain ID
+            aliceSwapVerified: false, // Whether Alice's swap was verified in Join mode
+            aliceSwapData: null // Alice's swap data from verification
         };
 
         // Utils
@@ -1407,21 +1468,34 @@
             try {
                 log(`🔐 Requesting signature from Jstz wallet...`, 'warning');
                 
-                // Build the operation - body must be Array of bytes as per wallet docs
+                // Build the operation - body must be base64 encoded as per Jstz docs
                 const bodyJson = body ? JSON.stringify(body) : '';
-                const bodyBytes = bodyJson ? Array.from(encoder.encode(bodyJson)) : [];
+                
+                // Convert to base64 (handles UTF-8 properly)
+                const toBase64 = (str) => {
+                    if (!str) return '';
+                    // Encode UTF-8 string to base64
+                    const bytes = encoder.encode(str);
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary);
+                };
+                
+                const bodyBase64 = bodyJson ? toBase64(bodyJson) : '';
                 
                 const operation = {
                     _type: 'RunFunction',
                     uri: `jstz://${contractAddress}${path}`,
                     method: 'POST',
                     headers: {},
-                    body: bodyBytes, // Array of bytes as per wallet documentation
+                    body: bodyBase64, // Base64 encoded string as per Jstz engineer
                     gasLimit: 100000
                 };
                 
                 console.log('[JSTZ] Body JSON:', bodyJson);
-                console.log('[JSTZ] Body bytes length:', bodyBytes.length);
+                console.log('[JSTZ] Body base64:', bodyBase64);
                 
                 console.log('[JSTZ] Operation to sign:', operation);
                 
@@ -1909,6 +1983,12 @@
                 regenSecretBtn.style.display = 'block';
                 copyHashBtn.style.display = 'block';
                 
+                // Hide Verify button and Alice details in create mode
+                const verifyBtn = document.getElementById('verify-swap-btn');
+                if (verifyBtn) verifyBtn.classList.add('hidden');
+                const aliceDetails = document.getElementById('alice-swap-details');
+                if (aliceDetails) aliceDetails.classList.add('hidden');
+                
                 // Hash Input Readonly
                 hashInput.readOnly = true;
                 hashInput.classList.add('text-gray-300');
@@ -1918,6 +1998,9 @@
                 
                 // Reset Timelock
                 if(timelockInput) timelockInput.value = 60;
+                
+                // Enable action button in create mode
+                actionBtn.disabled = false;
 
                 actionBtn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>`;
                 actionBtn.className = "btn-primary w-full py-4 rounded-xl text-lg shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-2 group";
@@ -1941,6 +2024,17 @@
                 regenSecretBtn.style.display = 'none';
                 copyHashBtn.style.display = 'none';
                 
+                // Show Verify button in Join mode
+                const verifyBtn = document.getElementById('verify-swap-btn');
+                if (verifyBtn) verifyBtn.classList.remove('hidden');
+                
+                // Hide Alice swap details initially
+                const aliceDetails = document.getElementById('alice-swap-details');
+                if (aliceDetails) aliceDetails.classList.add('hidden');
+                
+                // Reset verification state
+                state.aliceSwapVerified = false;
+                
                 // Make Hash Input Editable
                 hashInput.readOnly = false;
                 hashInput.value = "";
@@ -1952,16 +2046,18 @@
                 // Enforce Timelock < Alice's (e.g. 30 mins)
                 if(timelockInput) timelockInput.value = 30;
 
-                actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-                actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
+                // Initially show "Verify First" button
+                actionBtn.innerHTML = `<span>Verify Swap First</span><i class="fa-solid fa-magnifying-glass"></i>`;
+                actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-blue-500/50 text-white shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-70";
+                actionBtn.disabled = true;
                 
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
                 log("👤 MODE: BOB (Participant)", 'warning');
                 log("📋 You are RESPONDING to an existing swap", 'info');
                 log("⚠️ PREREQUISITE: Alice must have ALREADY locked her funds!", 'warning');
                 log("1️⃣ Paste the HASH received from Alice", 'system');
-                log("2️⃣ The system verifies Alice has locked funds", 'system');
-                log("3️⃣ Click 'Match Swap' to lock your funds", 'system');
+                log("2️⃣ Click 'Verify' to check Alice's swap details", 'system');
+                log("3️⃣ Review the amount, then click 'Match Swap'", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             }
         }
@@ -2811,6 +2907,151 @@
                 error: 'Cannot verify Jstz swap via extension - use CLI',
                 swap: null
             };
+        }
+        
+        // ============================================
+        // VERIFY ALICE SWAP DETAILS (for Bob in Join mode)
+        // ============================================
+        
+        async function verifyAliceSwapDetails() {
+            const hashInput = document.getElementById('hash-input');
+            const hashLock = hashInput.value.trim();
+            const verifyBtn = document.getElementById('verify-swap-btn');
+            const aliceDetails = document.getElementById('alice-swap-details');
+            const actionBtn = document.getElementById('main-action-btn');
+            
+            if (!isValidHashLock(hashLock)) {
+                log("❌ Please enter a valid HashLock (0x followed by 64 hex characters)", 'error');
+                return;
+            }
+            
+            verifyBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+            verifyBtn.disabled = true;
+            
+            log(`🔍 Verifying Alice's swap on ${state.connectedWallet === 'jstz' ? 'Jstz' : 'Etherlink'}...`, 'warning');
+            
+            try {
+                let result;
+                let chain;
+                
+                // Bob is connected to Jstz → Alice's swap is on Etherlink
+                // Bob is connected to Etherlink → Alice's swap is on Jstz
+                if (state.connectedWallet === 'jstz') {
+                    // Bob on Jstz, verify Alice on Etherlink
+                    result = await verifySwapOnEtherlink(hashLock, SwapState.OPEN);
+                    chain = 'Etherlink';
+                } else {
+                    // Bob on Etherlink, Alice on Jstz - can't verify via extension
+                    log("⚠️ Cannot auto-verify Jstz swap. Use CLI to verify:", 'warning');
+                    log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'</code>`, 'info');
+                    
+                    // Show manual confirmation
+                    aliceDetails.classList.remove('hidden');
+                    document.getElementById('alice-swap-amount').textContent = '? XTZ (verify via CLI)';
+                    document.getElementById('alice-swap-expiry').textContent = 'Unknown';
+                    document.getElementById('alice-swap-sender').textContent = 'Unknown';
+                    document.getElementById('alice-swap-chain').textContent = 'Jstz';
+                    document.getElementById('alice-swap-status').textContent = 'UNVERIFIED';
+                    document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400';
+                    
+                    // Enable button but show warning
+                    state.aliceSwapVerified = 'manual';
+                    actionBtn.innerHTML = `<span>Match Swap (Unverified)</span><i class="fa-solid fa-triangle-exclamation"></i>`;
+                    actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-yellow-500/80 text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
+                    actionBtn.disabled = false;
+                    
+                    verifyBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Verify`;
+                    verifyBtn.disabled = false;
+                    return;
+                }
+                
+                if (!result.valid) {
+                    log(`❌ ${result.error}`, 'error');
+                    aliceDetails.classList.add('hidden');
+                    state.aliceSwapVerified = false;
+                    
+                    verifyBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Verify`;
+                    verifyBtn.disabled = false;
+                    return;
+                }
+                
+                // Show Alice's swap details
+                const swap = result.swap;
+                aliceDetails.classList.remove('hidden');
+                
+                document.getElementById('alice-swap-amount').textContent = `${swap.amount} XTZ`;
+                
+                // Calculate remaining time
+                const now = Math.floor(Date.now() / 1000);
+                const remaining = swap.expiration - now;
+                if (remaining > 0) {
+                    const mins = Math.floor(remaining / 60);
+                    const secs = remaining % 60;
+                    document.getElementById('alice-swap-expiry').textContent = `${mins}m ${secs}s remaining`;
+                } else {
+                    document.getElementById('alice-swap-expiry').textContent = 'EXPIRED';
+                    document.getElementById('alice-swap-expiry').classList.add('text-red-400');
+                }
+                
+                document.getElementById('alice-swap-sender').textContent = swap.sender;
+                document.getElementById('alice-swap-chain').textContent = chain;
+                document.getElementById('alice-swap-status').textContent = ['OPEN', 'CLAIMED', 'EXPIRED'][swap.status];
+                
+                if (swap.status === 0 && remaining > 0) {
+                    // Valid and open - enable Match Swap
+                    state.aliceSwapVerified = true;
+                    state.aliceSwapData = swap;
+                    
+                    actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                    actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-jstz-accent text-black shadow-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all";
+                    actionBtn.disabled = false;
+                    
+                    log(`✅ Alice's swap verified! Amount: ${swap.amount} XTZ`, 'success');
+                    log(`⏰ Expires: ${swap.expirationDate}`, 'info');
+                    log(`💡 Set your timelock shorter than Alice's remaining time (${Math.floor(remaining / 60)} mins)`, 'warning');
+                    
+                    // Auto-adjust timelock to be half of Alice's remaining time
+                    const suggestedTimelock = Math.max(5, Math.floor(remaining / 120)); // Half, min 5 mins
+                    document.getElementById('timelock-input').value = suggestedTimelock;
+                    log(`⚙️ Auto-set your timelock to ${suggestedTimelock} minutes`, 'system');
+                    
+                } else {
+                    log(`❌ Cannot match: swap is ${['OPEN', 'CLAIMED', 'EXPIRED'][swap.status]}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
+                    actionBtn.disabled = true;
+                }
+                
+            } catch (error) {
+                console.error('[VERIFY] Error:', error);
+                log(`❌ Verification failed: ${error.message}`, 'error');
+                aliceDetails.classList.add('hidden');
+            }
+            
+            verifyBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Verify`;
+            verifyBtn.disabled = false;
+        }
+        
+        function cancelJoinSwap() {
+            const aliceDetails = document.getElementById('alice-swap-details');
+            const actionBtn = document.getElementById('main-action-btn');
+            const hashInput = document.getElementById('hash-input');
+            
+            // Hide details
+            aliceDetails.classList.add('hidden');
+            
+            // Reset state
+            state.aliceSwapVerified = false;
+            state.aliceSwapData = null;
+            
+            // Clear hash input
+            hashInput.value = '';
+            hashInput.focus();
+            
+            // Reset button
+            actionBtn.innerHTML = `<span>Verify Swap First</span><i class="fa-solid fa-magnifying-glass"></i>`;
+            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-blue-500/50 text-white shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-70";
+            actionBtn.disabled = true;
+            
+            log("🔄 Cancelled. Enter a new HashLock to verify.", 'info');
         }
         
         // Validate hashlock format
@@ -3718,6 +3959,12 @@
                 }
             } else {
                 // BOB JOINS - matches existing swap with Alice's hash
+                // Check if swap was verified first
+                if (!state.aliceSwapVerified) {
+                    log("⚠️ Please verify Alice's swap first by clicking the 'Verify' button", 'warning');
+                    return;
+                }
+                
                 if (state.connectedWallet === 'jstz') {
                     // Alice locked on Etherlink, Bob matches on Jstz
                     await matchAsBobOnJstz();
