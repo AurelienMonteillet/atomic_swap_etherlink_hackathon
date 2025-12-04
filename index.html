@@ -1750,12 +1750,17 @@
                     });
                     
                     const kvData = await jstzClient.accounts.getKv(jstzContractAddress, { key: kvKey });
+                    console.log('[KV] SDK response:', kvData);
                     
-                    if (kvData && kvData.value) {
+                    if (kvData) {
                         try {
-                            return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                            // SDK might return value directly or in a value property
+                            const value = kvData.value !== undefined ? kvData.value : kvData;
+                            // If it's a string (JSON-encoded), parse it
+                            return typeof value === 'string' ? JSON.parse(value) : value;
                         } catch (e) {
-                            return kvData.value;
+                            console.log('[KV] SDK parse error:', e);
+                            return kvData.value || kvData;
                         }
                     }
                 } catch (sdkErr) {
@@ -1773,12 +1778,24 @@
                 
                 if (kvResponse.ok) {
                     const kvData = await kvResponse.json();
+                    console.log('[KV] HTTP response:', kvData);
                     
-                    if (kvData && kvData.value) {
+                    // API returns a JSON string (double-encoded), need to parse it
+                    if (kvData) {
                         try {
-                            return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                            // If it's a string, parse it
+                            if (typeof kvData === 'string') {
+                                return JSON.parse(kvData);
+                            }
+                            // If it has a value property, use that
+                            if (kvData.value) {
+                                return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                            }
+                            // Otherwise return as-is
+                            return kvData;
                         } catch (e) {
-                            return kvData.value;
+                            console.log('[KV] Parse error:', e);
+                            return kvData;
                         }
                     }
                 }
