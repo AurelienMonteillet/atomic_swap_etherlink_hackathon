@@ -2969,10 +2969,11 @@
                 return;
             }
             
-            // 5. Validate counterparty address format if provided (must be tz1 for Jstz destination)
+            // 5. Validate counterparty address format if provided
+            // Alice initiates on Etherlink → Bob will claim on Etherlink → recipient must be Bob's 0x address
             const counterpartyValue = counterpartyInput?.value?.trim() || '';
-            if (counterpartyValue && !counterpartyValue.startsWith('tz1') && !counterpartyValue.startsWith('tz2') && !counterpartyValue.startsWith('tz3')) {
-                log("⚠️ Note: Counterparty should be a Jstz address (tz1...) for cross-chain swap", 'warning');
+            if (counterpartyValue && !counterpartyValue.startsWith('0x')) {
+                log("⚠️ Note: Counterparty should be Bob's Etherlink address (0x...) - he will claim these funds", 'warning');
             }
 
             // Connect if not connected
@@ -3135,10 +3136,11 @@
                 return;
             }
             
-            // 4. Validate counterparty address format if provided (must be 0x for Etherlink destination)
+            // 4. Validate counterparty address format if provided
+            // Alice initiates on Jstz → Bob will claim on Jstz → recipient must be Bob's tz1 address
             const counterpartyValue = counterpartyInput?.value?.trim() || '';
-            if (counterpartyValue && !counterpartyValue.startsWith('0x')) {
-                log("⚠️ Note: Counterparty should be an Etherlink address (0x...) for cross-chain swap", 'warning');
+            if (counterpartyValue && !counterpartyValue.startsWith('tz')) {
+                log("⚠️ Note: Counterparty should be Bob's Jstz address (tz1...) - he will claim these funds", 'warning');
             }
 
             // 5. Connect Jstz if not connected
@@ -3376,15 +3378,30 @@
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
                 log(`💰 Transferring ${amountMutez} mutez (${amount} XTZ) to smart function`, 'warning');
                 
-                // SECURITY: Set Alice's Etherlink address as recipient
-                // Only Alice (who initiated on Etherlink) can claim Bob's funds on Jstz
-                const aliceAddress = aliceSwap.swap.sender;
-                log(`🔒 Setting recipient to Alice: ${aliceAddress.substring(0, 10)}...`, 'info');
+                // SECURITY: Set Alice's Jstz address as recipient
+                // Alice initiated on Etherlink, she will claim on Jstz with her tz1 address
+                // We need her Jstz address from the counterparty field (can't derive from 0x)
+                const counterpartyInput = document.getElementById('counterparty-input');
+                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
+                let aliceJstzAddress = null;
+                
+                if (counterpartyRaw.startsWith('tz')) {
+                    aliceJstzAddress = counterpartyRaw;
+                    log(`🔒 Setting recipient to Alice's Jstz address: ${aliceJstzAddress.substring(0, 12)}...`, 'info');
+                } else if (counterpartyRaw.startsWith('0x')) {
+                    log(`⚠️ 0x address ignored - need Alice's Jstz address (tz1...) for recipient`, 'warning');
+                }
+                
+                if (!aliceJstzAddress) {
+                    log(`⚠️ Warning: No Jstz recipient set - anyone with secret can claim!`, 'warning');
+                    log(`💡 For security, enter Alice's Jstz address (tz1...) in Counterparty field`, 'info');
+                    log(`📋 Alice's Etherlink address: ${aliceSwap.swap.sender}`, 'info');
+                }
                 
                 const response = await jstzRequest('POST', '/initiate', {
                     hashlock: hashlock,
                     expiration: expiration,
-                    recipient: aliceAddress // Only Alice can claim!
+                    recipient: aliceJstzAddress // Only Alice can claim (if set)
                     // Note: amount is sent via X-JSTZ-TRANSFER header, not in body
                 }, {
                     requiresSignature: true,
