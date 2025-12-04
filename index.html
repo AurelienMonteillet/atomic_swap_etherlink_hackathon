@@ -5448,7 +5448,7 @@
                 // 2. Search on Jstz if not found on Etherlink
                 if (!foundSecret) {
                     try {
-                        statusEl.textContent = '🔍 Checking Jstz...';
+                        statusEl.textContent = '🔍 Checking Jstz KV store...';
                         
                         // First, check if swap is already loaded in state.jstzSwaps
                         const jstzSwap = state.jstzSwaps?.find(s => 
@@ -5458,32 +5458,100 @@
                         if (jstzSwap && jstzSwap.revealedSecret && jstzSwap.revealedSecret !== '0x' && jstzSwap.revealedSecret.length > 2) {
                             foundSecret = jstzSwap.revealedSecret;
                             foundOn = 'Jstz (from your swaps)';
-                        } else if (isJstzExtensionInstalled() && state.jstzAddress) {
-                            // Try to fetch swap via wallet if connected
-                            try {
-                                statusEl.textContent = '🔍 Querying Jstz via wallet...';
-                                const result = await jstzRequest('POST', `/swap/${swapId}`, {}, { 
-                                    forceWallet: true, 
-                                    silent: true 
-                                });
-                                
-                                if (result && result.success && result.message) {
-                                    let swapData = result.message;
-                                    if (typeof swapData === 'string') {
+                        } else {
+                            // Try to read directly from KV store using public API
+                            const jstzContractAddress = CONFIG.jstz.contractAddress;
+                            const jstzRpcUrl = CONFIG.jstz.rpcUrl;
+                            
+                            // Remove 0x prefix from hashlock for KV key
+                            const kvKey = swapId.startsWith('0x') ? swapId.slice(2) : swapId;
+                            
+                            // Method 1: Try using Jstz SDK if available
+                            if (window.JstzClient) {
+                                try {
+                                    const jstzClient = new window.JstzClient({
+                                        baseURL: jstzRpcUrl,
+                                        timeout: 10000
+                                    });
+                                    
+                                    const kvData = await jstzClient.accounts.getKv(jstzContractAddress, { key: kvKey });
+                                    
+                                    if (kvData && kvData.value) {
+                                        let swapData;
                                         try {
-                                            swapData = JSON.parse(swapData);
+                                            swapData = typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
                                         } catch (e) {
-                                            console.log('Could not parse Jstz swap data');
+                                            swapData = kvData.value;
+                                        }
+                                        
+                                        if (swapData && swapData.revealedSecret && swapData.revealedSecret !== '0x' && swapData.revealedSecret.length > 2) {
+                                            foundSecret = swapData.revealedSecret;
+                                            foundOn = 'Jstz (KV store)';
                                         }
                                     }
-                                    
-                                    if (swapData && swapData.revealedSecret && swapData.revealedSecret !== '0x' && swapData.revealedSecret.length > 2) {
-                                        foundSecret = swapData.revealedSecret;
-                                        foundOn = 'Jstz (via wallet)';
-                                    }
+                                } catch (sdkErr) {
+                                    console.log('Jstz SDK KV read failed:', sdkErr.message);
                                 }
-                            } catch (walletErr) {
-                                console.log('Jstz wallet query failed:', walletErr.message);
+                            }
+                            
+                            // Method 2: Fallback to direct HTTP API
+                            if (!foundSecret) {
+                                try {
+                                    const kvUrl = `${jstzRpcUrl}/accounts/${jstzContractAddress}/kv?key=${kvKey}`;
+                                    const kvResponse = await fetch(kvUrl, {
+                                        method: 'GET',
+                                        headers: { 'Accept': 'application/json' }
+                                    });
+                                    
+                                    if (kvResponse.ok) {
+                                        const kvData = await kvResponse.json();
+                                        
+                                        if (kvData && kvData.value) {
+                                            let swapData;
+                                            try {
+                                                swapData = typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                                            } catch (e) {
+                                                swapData = kvData.value;
+                                            }
+                                            
+                                            if (swapData && swapData.revealedSecret && swapData.revealedSecret !== '0x' && swapData.revealedSecret.length > 2) {
+                                                foundSecret = swapData.revealedSecret;
+                                                foundOn = 'Jstz (KV store)';
+                                            }
+                                        }
+                                    }
+                                } catch (httpErr) {
+                                    console.log('Jstz HTTP KV read failed:', httpErr.message);
+                                }
+                            }
+                            
+                            // Method 3: Fallback to wallet query if SDK and HTTP both failed
+                            if (!foundSecret && isJstzExtensionInstalled() && state.jstzAddress) {
+                                try {
+                                    statusEl.textContent = '🔍 Querying Jstz via wallet...';
+                                    const result = await jstzRequest('POST', `/swap/${swapId}`, {}, { 
+                                        forceWallet: true, 
+                                        silent: true 
+                                    });
+                                    
+                                    if (result && result.success && result.message) {
+                                        let swapData = result.message;
+                                        if (typeof swapData === 'string') {
+                                            try {
+                                                swapData = JSON.parse(swapData);
+                                            } catch (e) {
+                                                console.log('Could not parse Jstz swap data');
+                                            }
+                                        }
+                                        
+                                        if (swapData && swapData.revealedSecret && swapData.revealedSecret !== '0x' && swapData.revealedSecret.length > 2) {
+                                            foundSecret = swapData.revealedSecret;
+                                            foundOn = 'Jstz (via wallet)';
+                                        }
+                                    }
+                                } catch (walletErr) {
+                                    console.log('Jstz wallet query failed:', walletErr.message);
+                                }
                             }
                         }
                     } catch (jstzErr) {
