@@ -1730,6 +1730,66 @@
         }
 
         /**
+         * Read from Jstz KV store (public API, no wallet needed)
+         * @param key - KV key (hashlock without 0x prefix)
+         * @returns KV value or null
+         */
+        async function readJstzKv(key) {
+            const jstzContractAddress = CONFIG.jstz.contractAddress;
+            const jstzRpcUrl = CONFIG.jstz.rpcUrl;
+            
+            // Remove 0x prefix if present
+            const kvKey = key.startsWith('0x') ? key.slice(2) : key;
+            
+            // Method 1: Try using Jstz SDK if available
+            if (window.JstzClient) {
+                try {
+                    const jstzClient = new window.JstzClient({
+                        baseURL: jstzRpcUrl,
+                        timeout: 10000
+                    });
+                    
+                    const kvData = await jstzClient.accounts.getKv(jstzContractAddress, { key: kvKey });
+                    
+                    if (kvData && kvData.value) {
+                        try {
+                            return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                        } catch (e) {
+                            return kvData.value;
+                        }
+                    }
+                } catch (sdkErr) {
+                    console.log('[KV] SDK read failed:', sdkErr.message);
+                }
+            }
+            
+            // Method 2: Fallback to direct HTTP API
+            try {
+                const kvUrl = `${jstzRpcUrl}/accounts/${jstzContractAddress}/kv?key=${kvKey}`;
+                const kvResponse = await fetch(kvUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (kvResponse.ok) {
+                    const kvData = await kvResponse.json();
+                    
+                    if (kvData && kvData.value) {
+                        try {
+                            return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
+                        } catch (e) {
+                            return kvData.value;
+                        }
+                    }
+                }
+            } catch (httpErr) {
+                console.log('[KV] HTTP read failed:', httpErr.message);
+            }
+            
+            return null;
+        }
+
+        /**
          * Make a request to Jstz smart function
          * @param method - HTTP method
          * @param path - Endpoint path (e.g., /initiate, /claim, /refund)
@@ -2115,29 +2175,16 @@
             
             try {
                 if (aliceChain === 'etherlink') {
-                    // Alice locked on Etherlink, check if she claimed on Jstz
+                    // Alice locked on Etherlink, check if she claimed on Jstz (read-only, no wallet needed!)
                     console.log('[SECRET CHECK] Checking Jstz for claimed swap:', hashlock.substring(0, 20) + '...');
                     
-                    // User clicked manually, so wallet should be connected
-                    if (!isJstzExtensionInstalled()) {
-                        log(`❌ Jstz wallet extension not detected`, 'error');
-                        return;
-                    }
+                    log(`🔍 Checking swap status on Jstz (read-only)...`, 'system');
+                    const swap = await readJstzKv(hashlock);
+                    console.log('[SECRET POLLING] Jstz KV result:', swap);
                     
-                    log(`🔍 Checking swap status on Jstz...`, 'system');
-                    const result = await jstzRequest('POST', `/swap/${hashlock}`, {}, { forceWallet: true });
-                    console.log('[SECRET POLLING] Jstz result:', result);
-                    
-                    if (!result.success) return;
-                    
-                    // Parse response
-                    let swapData = result.message?.found !== undefined ? result.message : 
-                                   result.message?.swap ? { found: true, swap: result.message.swap } : null;
-                    
-                    if (swapData?.found && swapData?.swap?.status === 'CLAIMED') {
+                    if (swap && swap.status === 'CLAIMED') {
                         // Secret revealed!
                         stopCounterpartyPolling();
-                        const swap = swapData.swap;
                         const secret = swap.revealedSecret;
                         
                         if (secret) {
@@ -2289,33 +2336,14 @@
             
             try {
                 if (targetChain === 'jstz') {
-                    // Check if swap exists on Jstz (manual button click)
+                    // Check if swap exists on Jstz (read-only, no wallet needed!)
                     console.log('[CHECK] Checking Jstz for swap:', hashlock.substring(0, 20) + '...');
                     
-                    // User clicked manually, wallet should be connected
-                    if (!isJstzExtensionInstalled()) {
-                        log(`❌ Jstz wallet extension not detected`, 'error');
-                        return;
-                    }
+                    log(`🔍 Checking swap status on Jstz (read-only)...`, 'system');
+                    const swap = await readJstzKv(hashlock);
+                    console.log('[POLLING] Jstz KV result:', swap);
                     
-                    log(`🔍 Checking swap status on Jstz...`, 'system');
-                    const walletResult = await jstzRequest('POST', `/swap/${hashlock}`, {}, { forceWallet: true });
-                    console.log('[POLLING] Jstz result:', walletResult);
-                    
-                    if (!walletResult.success) {
-                        console.log('[POLLING] Jstz request failed');
-                        return;
-                    }
-                    
-                    // Parse the response - could be in message or directly
-                    let swapData = null;
-                    if (walletResult.message?.found !== undefined) {
-                        swapData = walletResult.message;
-                    } else if (typeof walletResult.message === 'object' && walletResult.message?.swap) {
-                        swapData = { found: true, swap: walletResult.message.swap };
-                    }
-                    
-                    if (swapData?.found && swapData?.swap?.status === 'OPEN') {
+                    if (swap && swap.status === 'OPEN') {
                         // Counterparty has locked!
                         stopCounterpartyPolling();
                         const swap = swapData.swap;
@@ -2336,6 +2364,9 @@
                         };
                         
                         updateProgress(4);
+                    } else if (swap) {
+                        // Swap exists but not OPEN (maybe claimed/refunded)
+                        log(`⚠️ Swap found but status is ${swap.status || 'unknown'}`, 'warning');
                     } else {
                         // Swap not found yet
                         log(`⏳ Counterparty hasn't locked yet. Try again later.`, 'warning');
@@ -4112,34 +4143,17 @@
         async function verifySwapOnJstzDirect(hashLock) {
             console.log('[VERIFY-DIRECT] Attempting direct Jstz swap verification:', hashLock);
             
+            // Use the new public KV API
+            const swap = await readJstzKv(hashLock);
+            
+            if (swap) {
+                console.log('[VERIFY-DIRECT] Swap found via KV API:', swap);
+                return { valid: true, swap };
+            }
+            
+            // Fallback to old methods if KV read fails
             const contractAddress = CONFIG.jstz.contractAddress;
             const rpcUrl = CONFIG.jstz.rpcUrl;
-            
-            // Try multiple methods to read the swap data
-            
-            // Method 1: Try the KV API directly (if available)
-            try {
-                const kvKey = hashLock.startsWith('0x') ? hashLock.slice(2) : hashLock;
-                const kvUrl = `${rpcUrl}/kv/${contractAddress}/${kvKey}`;
-                console.log('[VERIFY-DIRECT] Trying KV API:', kvUrl);
-                
-                const kvResponse = await fetch(kvUrl, {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                });
-                
-                if (kvResponse.ok) {
-                    const kvData = await kvResponse.json();
-                    console.log('[VERIFY-DIRECT] KV response:', kvData);
-                    
-                    if (kvData) {
-                        const swap = typeof kvData === 'string' ? JSON.parse(kvData) : kvData;
-                        return { valid: true, swap };
-                    }
-                }
-            } catch (e) {
-                console.log('[VERIFY-DIRECT] KV API not available:', e.message);
-            }
             
             // Method 2: Try the smart function's /swap/:hashlock endpoint directly
             try {
@@ -4239,44 +4253,15 @@
             verifyJstzBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting...`;
             verifyJstzBtn.disabled = true;
             
-            log("🔐 Connecting to Jstz wallet for verification...", 'warning');
+            log("🔍 Reading swap data from Jstz KV store (read-only)...", 'warning');
             
             try {
-                // Check if Jstz extension is installed
-                if (!isJstzExtensionInstalled()) {
-                    log("❌ Jstz wallet extension not detected", 'error');
-                    log(`<a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-blue-400 underline">Install Jstz Wallet Extension</a>`, 'info');
-                    
-                    // Fallback to CLI
-                    log(`<code class="bg-black/50 px-2 py-1 rounded text-xs">jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'</code>`, 'system');
-                    
-                    verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify`;
-                    verifyJstzBtn.disabled = false;
-                    return;
-                }
+                // Read directly from KV store (no wallet needed!)
+                const swap = await readJstzKv(hashLock);
                 
-                log("📡 Requesting swap data from Jstz via wallet...", 'warning');
+                console.log('[VERIFY-JSTZ] KV result:', swap);
                 
-                // Call the smart function to get swap details (force wallet to bypass read-only check)
-                const result = await jstzRequest('POST', `/swap/${hashLock}`, {}, { forceWallet: true });
-                
-                console.log('[VERIFY-JSTZ] Result:', result);
-                
-                if (result.success && result.message) {
-                    let swapData = result.message;
-                    
-                    // Parse if string
-                    if (typeof swapData === 'string') {
-                        try {
-                            swapData = JSON.parse(swapData);
-                        } catch (e) {
-                            console.log('[VERIFY-JSTZ] Could not parse response:', swapData);
-                        }
-                    }
-                    
-                    // Check if swap was found
-                    if (swapData.found && swapData.swap) {
-                        const swap = swapData.swap;
+                if (swap) {
                         
                         log(`✅ Alice's swap verified on Jstz!`, 'success');
                         
@@ -4328,31 +4313,15 @@
                         verifyJstzBtn.innerHTML = `<i class="fa-solid fa-check mr-1"></i> Verified`;
                         verifyJstzBtn.className = "hidden px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-bold whitespace-nowrap";
                         verifyJstzBtn.disabled = true;
-                        
-                    } else if (swapData.found === false) {
+                    } else {
+                        // Swap not found
                         log(`❌ Swap not found on Jstz with this hashlock`, 'error');
                         document.getElementById('alice-swap-status').textContent = 'NOT FOUND';
                         document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400';
                         
-                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
-                        verifyJstzBtn.disabled = false;
-                    } else {
-                        log(`⚠️ Unexpected response format`, 'warning');
-                        console.log('[VERIFY-JSTZ] Unexpected response:', swapData);
-                        
-                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
+                        verifyJstzBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i> Retry`;
                         verifyJstzBtn.disabled = false;
                     }
-                } else {
-                    log(`❌ Failed to verify: ${result.error || 'Unknown error'}`, 'error');
-                    
-                    if (result.cliRequired) {
-                        // CLI modal already shown
-                    }
-                    
-                    verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Retry`;
-                    verifyJstzBtn.disabled = false;
-                }
                 
             } catch (error) {
                 console.error('[VERIFY-JSTZ] Error:', error);
@@ -5572,12 +5541,8 @@
                     statusEl.className = 'text-xs text-green-400 mt-1';
                     log(`✨ Secret auto-filled from ${foundOn}!`, 'success');
                 } else {
-                    // Provide helpful message based on what was checked
-                    let helpMsg = '';
-                    if (!state.jstzAddress || !isJstzExtensionInstalled()) {
-                        helpMsg = '<br><span class="text-gray-400 text-[10px]">💡 Tip: Connect Jstz wallet and load "My Swaps" to check Jstz swaps</span>';
-                    }
-                    statusEl.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Secret not revealed yet on either chain${helpMsg}`;
+                    // Secret not found
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Secret not revealed yet on either chain`;
                     statusEl.className = 'text-xs text-orange-400 mt-1';
                     log('Secret not found - swap may not have been claimed yet', 'warning');
                 }
