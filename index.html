@@ -334,7 +334,7 @@
                 
                 <div class="hidden md:flex items-center space-x-4">
                     <!-- Help/Docs Button -->
-                    <a href="https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon#readme" target="_blank" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50 transition text-blue-400 text-xs font-medium">
+                    <a href="https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon#readme" target="_blank" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-ether-green/50 transition text-gray-300 hover:text-ether-green text-xs font-medium">
                         <i class="fa-solid fa-book"></i>
                         <span>How to Use</span>
                     </a>
@@ -393,11 +393,11 @@
 
         <!-- Getting Started Banner -->
         <div class="w-full max-w-6xl mb-6 z-10">
-            <div class="bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-jstz-accent/10 border border-white/10 rounded-2xl p-4 backdrop-blur-sm">
+            <div class="bg-gradient-to-r from-ether-green/5 via-slate-800/50 to-jstz-accent/5 border border-ether-green/20 rounded-2xl p-4 backdrop-blur-sm">
                 <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div class="flex items-start gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                            <i class="fa-solid fa-rocket text-white"></i>
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-ether-green to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-ether-green/20">
+                            <i class="fa-solid fa-rocket text-black"></i>
                         </div>
                         <div>
                             <h3 class="text-white font-semibold text-sm mb-1">First time here? 👋</h3>
@@ -409,7 +409,7 @@
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <a href="https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon#-quick-start-5-minutes" target="_blank" 
-                           class="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white text-xs font-bold transition-all shadow-lg hover:shadow-blue-500/25">
+                           class="flex items-center gap-2 px-4 py-2 rounded-xl bg-ether-green hover:bg-emerald-400 text-black text-xs font-bold transition-all shadow-lg shadow-ether-green/20">
                             <i class="fa-solid fa-play"></i>
                             Quick Start Guide
                         </a>
@@ -433,11 +433,11 @@
                             <i class="fa-solid fa-terminal"></i>
                             Install Jstz CLI
                         </a>
-                        <a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition">
+                        <a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-ether-green/10 text-ether-green hover:bg-ether-green/20 transition">
                             <i class="fa-solid fa-puzzle-piece"></i>
                             Jstz Wallet Extension
                         </a>
-                        <a href="https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon#-complete-atomic-swap-test" target="_blank" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition">
+                        <a href="https://github.com/AurelienMonteillet/atomic_swap_etherlink_hackathon#-complete-atomic-swap-test" target="_blank" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-jstz-accent/10 text-jstz-accent hover:bg-jstz-accent/20 transition">
                             <i class="fa-solid fa-list-check"></i>
                             Full Test Guide
                         </a>
@@ -710,7 +710,7 @@
                                     </label>
                                     <div class="flex gap-2">
                                         <input type="text" id="secret-input-claim" placeholder="0x..." class="flex-1 input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
-                                        <button onclick="autoFillSecret()" id="autofill-secret-btn" class="px-4 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all flex items-center gap-2 shadow-lg shadow-purple-500/20" title="Search for revealed secret on both chains">
+                                        <button onclick="autoFillSecret()" id="autofill-secret-btn" class="px-4 py-3 rounded-lg bg-ether-green hover:bg-emerald-400 text-black text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-ether-green/20" title="Search for revealed secret on both chains">
                                             <i class="fa-solid fa-magic-wand-sparkles"></i>
                                             <span>Auto-fill</span>
                                         </button>
@@ -2966,7 +2966,7 @@
 
             if (mode === 'redeem') {
                 // REDEEM MODE
-                btnRedeem.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-purple-600 shadow-lg transition-all";
+                btnRedeem.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-ether-green shadow-lg transition-all";
                 redeemContent.classList.remove('hidden');
                 log("Switched to Redeem / Refund Mode", 'info');
                 return;
@@ -2974,7 +2974,7 @@
             
             if (mode === 'myswaps') {
                 // MY SWAPS MODE
-                btnMySwaps.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-600 shadow-lg transition-all";
+                btnMySwaps.className = "flex-1 py-3 rounded-lg text-sm font-semibold text-black bg-jstz-accent shadow-lg transition-all";
                 myswapsContent.classList.remove('hidden');
                 log("Switched to My Swaps", 'info');
                 // Auto-load swaps when tab is opened
@@ -6629,25 +6629,25 @@
             
             // Configure icon based on type
             const icons = {
-                claim: { icon: 'fa-gift', gradient: 'from-yellow-400 to-orange-500', shadow: 'shadow-yellow-500/50' },
-                refund: { icon: 'fa-rotate-left', gradient: 'from-blue-400 to-cyan-500', shadow: 'shadow-blue-500/50' },
-                initiate: { icon: 'fa-lock', gradient: 'from-purple-400 to-pink-500', shadow: 'shadow-purple-500/50' },
-                match: { icon: 'fa-handshake', gradient: 'from-green-400 to-emerald-500', shadow: 'shadow-green-500/50' },
-                success: { icon: 'fa-check', gradient: 'from-green-400 to-emerald-600', shadow: 'shadow-green-500/50' }
+                claim: { icon: 'fa-gift', gradient: 'from-ether-green to-emerald-500', shadow: 'shadow-ether-green/50' },
+                refund: { icon: 'fa-rotate-left', gradient: 'from-gray-600 to-gray-800', shadow: 'shadow-gray-500/50' },
+                initiate: { icon: 'fa-lock', gradient: 'from-ether-green to-teal-600', shadow: 'shadow-ether-green/50' },
+                match: { icon: 'fa-handshake', gradient: 'from-emerald-500 to-green-600', shadow: 'shadow-emerald-500/50' },
+                success: { icon: 'fa-check', gradient: 'from-ether-green to-emerald-600', shadow: 'shadow-ether-green/50' }
             };
             
             const iconConfig = icons[type] || icons.success;
             iconEl.className = `w-20 h-20 rounded-full bg-gradient-to-br ${iconConfig.gradient} flex items-center justify-center mx-auto mb-6 shadow-lg ${iconConfig.shadow} animate-bounce-once`;
-            iconEl.innerHTML = `<i class="fa-solid ${iconConfig.icon} text-4xl text-white"></i>`;
+            iconEl.innerHTML = `<i class="fa-solid ${iconConfig.icon} text-4xl text-black"></i>`;
             
             // Update border color
             content.className = content.className.replace(/border-\w+-500\/30/g, '');
             const borderColors = {
-                claim: 'border-yellow-500/30',
-                refund: 'border-blue-500/30',
-                initiate: 'border-purple-500/30',
-                match: 'border-green-500/30',
-                success: 'border-green-500/30'
+                claim: 'border-ether-green/30',
+                refund: 'border-gray-500/30',
+                initiate: 'border-ether-green/30',
+                match: 'border-emerald-500/30',
+                success: 'border-ether-green/30'
             };
             content.classList.add(borderColors[type] || borderColors.success);
             
