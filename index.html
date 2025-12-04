@@ -629,20 +629,30 @@
                             </div>
 
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1 flex items-center gap-1">
-                        Counterparty Address
+                    <label id="counterparty-label" class="block text-sm text-gray-400 mb-1 flex items-center gap-1">
+                        <span id="counterparty-label-text">Recipient Address</span>
+                        <span id="counterparty-required" class="text-red-400 text-xs">(required)</span>
                         <div class="relative group">
                             <span class="w-4 h-4 inline-flex items-center justify-center rounded-full bg-white/10 text-[10px] text-gray-400 cursor-help hover:bg-white/20 transition">?</span>
-                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 border border-white/20 rounded-lg text-xs text-gray-300 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 shadow-xl">
-                                <div class="font-semibold text-white mb-1">Who receives the funds?</div>
-                                <p><strong>As Alice (Initiator):</strong> Enter Bob's address on the destination chain (Jstz). This is who can claim your locked funds.</p>
-                                <p class="mt-1"><strong>As Bob (Participant):</strong> Enter Alice's address on Etherlink. This is who can claim your locked funds.</p>
-                                <p class="mt-1 text-gray-500">Leave empty if unknown (uses zero address).</p>
+                            <div id="counterparty-tooltip" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 border border-white/20 rounded-lg text-xs text-gray-300 w-72 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 shadow-xl">
+                                <div class="font-semibold text-white mb-1">🔐 Security: Who can claim YOUR locked funds?</div>
+                                <p id="counterparty-tooltip-text">Enter the address of the person who will claim the funds you are locking.</p>
                                 <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                             </div>
                         </div>
                     </label>
-                    <input type="text" id="counterparty-input" placeholder="0x... or tz1..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                    <div class="relative">
+                        <input type="text" id="counterparty-input" placeholder="Loading..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none pr-24">
+                        <span id="counterparty-format-hint" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">0x...</span>
+                    </div>
+                    <p id="counterparty-error" class="text-red-400 text-xs mt-1 hidden">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                        <span id="counterparty-error-text">Invalid address format</span>
+                    </p>
+                    <p id="counterparty-help" class="text-gray-500 text-xs mt-1">
+                        <i class="fa-solid fa-info-circle mr-1"></i>
+                        <span id="counterparty-help-text">This person will be able to claim your locked funds with the secret.</span>
+                    </p>
                 </div>
 
                             <div class="grid grid-cols-2 gap-4">
@@ -2738,6 +2748,165 @@
             
             // Update balance display for selected token
             updateBalanceDisplay();
+            
+            // Update counterparty field UI based on chain and mode
+            updateCounterpartyUI();
+        }
+        
+        // ============================================
+        // COUNTERPARTY FIELD DYNAMIC UI
+        // ============================================
+        
+        /**
+         * Updates the counterparty input field based on current mode and chain.
+         * 
+         * ATOMIC SWAP LOGIC:
+         * - When you lock funds, the RECIPIENT is who can claim YOUR funds on THIS chain
+         * - The recipient must have an address on the SAME chain where you're locking
+         * 
+         * INITIATE MODE (Alice):
+         * - Alice locks on Etherlink → Recipient = Bob's 0x address (Bob claims on Etherlink)
+         * - Alice locks on Jstz → Recipient = Bob's tz1 address (Bob claims on Jstz)
+         * 
+         * JOIN MODE (Bob):
+         * - Bob locks on Jstz (Alice initiated on Etherlink) → Recipient = Alice's tz1 address
+         * - Bob locks on Etherlink (Alice initiated on Jstz) → Recipient = Alice's 0x address
+         */
+        function updateCounterpartyUI() {
+            const labelText = document.getElementById('counterparty-label-text');
+            const requiredBadge = document.getElementById('counterparty-required');
+            const tooltipText = document.getElementById('counterparty-tooltip-text');
+            const input = document.getElementById('counterparty-input');
+            const formatHint = document.getElementById('counterparty-format-hint');
+            const helpText = document.getElementById('counterparty-help-text');
+            const errorEl = document.getElementById('counterparty-error');
+            
+            if (!labelText || !input) return;
+            
+            // Hide error when updating
+            if (errorEl) errorEl.classList.add('hidden');
+            
+            const isJoinMode = state.mode === 'join';
+            const lockingOnJstz = state.chain === 'jstz';
+            
+            // Determine expected format based on where we're locking
+            // Recipient must be on the SAME chain where we lock (they claim there)
+            const expectedFormat = lockingOnJstz ? 'tz1' : '0x';
+            const formatExample = lockingOnJstz ? 'tz1...' : '0x...';
+            const chainName = lockingOnJstz ? 'Jstz' : 'Etherlink';
+            
+            if (isJoinMode) {
+                // BOB is matching - recipient is ALICE
+                labelText.textContent = "Alice's Address (Recipient)";
+                requiredBadge.classList.remove('hidden');
+                tooltipText.innerHTML = `
+                    <strong>🔐 Security:</strong> Enter Alice's <strong>${chainName}</strong> address.<br><br>
+                    Alice will claim your locked funds on ${chainName} using this address.<br>
+                    <span class="text-yellow-400">Format required: ${formatExample}</span>
+                `;
+                input.placeholder = `Enter Alice's ${chainName} address (${formatExample})`;
+                helpText.textContent = `Alice will use this address to claim your ${lockingOnJstz ? 'Jstz' : 'Etherlink'} funds.`;
+            } else {
+                // ALICE is initiating - recipient is BOB
+                labelText.textContent = "Bob's Address (Recipient)";
+                requiredBadge.classList.remove('hidden');
+                tooltipText.innerHTML = `
+                    <strong>🔐 Security:</strong> Enter Bob's <strong>${chainName}</strong> address.<br><br>
+                    Bob will claim your locked funds on ${chainName} using this address.<br>
+                    <span class="text-yellow-400">Format required: ${formatExample}</span>
+                `;
+                input.placeholder = `Enter Bob's ${chainName} address (${formatExample})`;
+                helpText.textContent = `Bob will use this address to claim your ${lockingOnJstz ? 'Jstz' : 'Etherlink'} funds.`;
+            }
+            
+            // Update format hint
+            formatHint.textContent = formatExample;
+            formatHint.className = lockingOnJstz 
+                ? 'absolute right-3 top-1/2 -translate-y-1/2 text-xs text-jstz-accent bg-jstz-accent/10 px-2 py-1 rounded border border-jstz-accent/30'
+                : 'absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ether-green bg-ether-green/10 px-2 py-1 rounded border border-ether-green/30';
+            
+            // Add input validation listener
+            input.oninput = () => validateCounterpartyInput();
+        }
+        
+        /**
+         * Validates the counterparty input and shows error if format is wrong
+         */
+        function validateCounterpartyInput() {
+            const input = document.getElementById('counterparty-input');
+            const errorEl = document.getElementById('counterparty-error');
+            const errorText = document.getElementById('counterparty-error-text');
+            
+            if (!input || !errorEl) return true;
+            
+            const value = input.value.trim();
+            if (!value) {
+                errorEl.classList.add('hidden');
+                return true; // Empty is allowed (will use zero address)
+            }
+            
+            const lockingOnJstz = state.chain === 'jstz';
+            const expectedFormat = lockingOnJstz ? 'tz' : '0x';
+            const chainName = lockingOnJstz ? 'Jstz' : 'Etherlink';
+            
+            // Check format
+            if (lockingOnJstz) {
+                // Jstz: must start with tz1, tz2, tz3, or KT1
+                if (!value.match(/^(tz1|tz2|tz3|KT1)[a-zA-Z0-9]{33}$/)) {
+                    if (value.startsWith('0x')) {
+                        errorText.textContent = `Wrong format! You're locking on Jstz, so recipient needs a tz1... address, not 0x...`;
+                    } else {
+                        errorText.textContent = `Invalid Jstz address format. Expected: tz1... (36 characters)`;
+                    }
+                    errorEl.classList.remove('hidden');
+                    input.classList.add('border-red-500');
+                    return false;
+                }
+            } else {
+                // Etherlink: must be 0x + 40 hex chars
+                if (!value.match(/^0x[a-fA-F0-9]{40}$/)) {
+                    if (value.startsWith('tz')) {
+                        errorText.textContent = `Wrong format! You're locking on Etherlink, so recipient needs a 0x... address, not tz1...`;
+                    } else {
+                        errorText.textContent = `Invalid Etherlink address format. Expected: 0x... (42 characters)`;
+                    }
+                    errorEl.classList.remove('hidden');
+                    input.classList.add('border-red-500');
+                    return false;
+                }
+            }
+            
+            // Valid!
+            errorEl.classList.add('hidden');
+            input.classList.remove('border-red-500');
+            return true;
+        }
+        
+        /**
+         * Gets the validated counterparty address or null if invalid/empty
+         * Shows error and blocks action if format is wrong
+         */
+        function getValidatedCounterparty(showError = true) {
+            const input = document.getElementById('counterparty-input');
+            const value = input?.value?.trim() || '';
+            
+            if (!value) {
+                if (showError) {
+                    log(`⚠️ Warning: No recipient set - swap will be less secure!`, 'warning');
+                }
+                return null;
+            }
+            
+            if (!validateCounterpartyInput()) {
+                if (showError) {
+                    const lockingOnJstz = state.chain === 'jstz';
+                    const expectedFormat = lockingOnJstz ? 'tz1...' : '0x...';
+                    log(`❌ Invalid recipient address! Expected format: ${expectedFormat}`, 'error');
+                }
+                return false; // false = invalid (different from null = empty)
+            }
+            
+            return value;
         }
 
         // Alias for setTab (used in onClick handlers)
@@ -2914,6 +3083,9 @@
                 log("3️⃣ Review the amount, then click 'Match Swap'", 'system');
                 log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
             }
+            
+            // Update counterparty field UI based on mode and chain
+            updateCounterpartyUI();
         }
 
         function updateProgress(step) {
@@ -3033,19 +3205,26 @@
             }
             log('✓ Sufficient balance', 'success');
             
+            // ========== VALIDATE RECIPIENT ==========
+            // Alice locks on Etherlink → Bob (recipient) must have 0x address to claim here
+            const validatedRecipient = getValidatedCounterparty(true);
+            if (validatedRecipient === false) {
+                // Invalid format - error already shown
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            const recipient = validatedRecipient || ethers.constants.AddressZero;
+            if (!validatedRecipient) {
+                log(`⚠️ No recipient set - anyone with the secret can claim your funds!`, 'warning');
+                log(`💡 For security, enter Bob's Etherlink address (0x...)`, 'info');
+            }
+            
             // ========== EXECUTE INITIATE ==========
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Initiating Swap...`;
 
             try {
-                // For Etherlink, recipient must be 0x address - ignore tz1 addresses
-                let recipient = ethers.constants.AddressZero;
-                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
-                if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length === 42) {
-                    recipient = counterpartyRaw;
-                } else if (counterpartyRaw.startsWith('tz')) {
-                    log(`⚠️ Note: tz1 address ignored for Etherlink - use 0x address or leave empty`, 'warning');
-                }
-                
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
                 
                 log(`Initiating swap on Etherlink...`, 'warning');
@@ -3173,19 +3352,26 @@
             log('💡 The smart function will reject if hash already exists', 'system');
 
             // ========== INITIATE SWAP ON JSTZ ==========
+            // ========== VALIDATE RECIPIENT ==========
+            // Alice locks on Jstz → Bob (recipient) must have tz1 address to claim here
+            const validatedRecipient = getValidatedCounterparty(true);
+            if (validatedRecipient === false) {
+                // Invalid format - error already shown
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+                return;
+            }
+            
+            const recipient = validatedRecipient || null;
+            if (!validatedRecipient) {
+                log(`⚠️ No recipient set - anyone with the secret can claim your funds!`, 'warning');
+                log(`💡 For security, enter Bob's Jstz address (tz1...)`, 'info');
+            }
+            
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Locking funds on Jstz...`;
 
             try {
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
-                
-                // For Jstz, recipient should be tz1 address - ignore 0x addresses
-                let recipient = '';
-                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
-                if (counterpartyRaw.startsWith('tz')) {
-                    recipient = counterpartyRaw;
-                } else if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length > 2) {
-                    log(`⚠️ Note: 0x address ignored for Jstz - use tz1 address or leave empty`, 'warning');
-                }
                 
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🔐 ALICE INITIE SUR JSTZ`, 'warning');
@@ -3311,6 +3497,14 @@
             if (timelockMins >= 60) {
                 log("⚠️ Warning: Your timelock should be shorter than Alice's for safety", 'warning');
             }
+            
+            // 5. Validate recipient address format (Bob locks on Jstz → needs Alice's tz1)
+            const validatedRecipient = getValidatedCounterparty(true);
+            if (validatedRecipient === false) {
+                // Invalid format - error already shown
+                log("💡 Enter Alice's Jstz address (tz1...) so only she can claim your funds", 'info');
+                return;
+            }
 
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying Alice's swap...`;
@@ -3388,30 +3582,21 @@
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
                 log(`💰 Transferring ${amountMutez} mutez (${amount} XTZ) to smart function`, 'warning');
                 
-                // SECURITY: Set Alice's Jstz address as recipient
-                // Alice initiated on Etherlink, she will claim on Jstz with her tz1 address
-                // We need her Jstz address from the counterparty field (can't derive from 0x)
-                const counterpartyInput = document.getElementById('counterparty-input');
-                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
-                let aliceJstzAddress = null;
+                // SECURITY: Bob locks on Jstz → Alice (recipient) must have tz1 address
+                // Recipient was already validated before this function was called
+                const aliceJstzAddress = getValidatedCounterparty(false); // Don't show error again
                 
-                if (counterpartyRaw.startsWith('tz')) {
-                    aliceJstzAddress = counterpartyRaw;
-                    log(`🔒 Setting recipient to Alice's Jstz address: ${aliceJstzAddress.substring(0, 12)}...`, 'info');
-                } else if (counterpartyRaw.startsWith('0x')) {
-                    log(`⚠️ 0x address ignored - need Alice's Jstz address (tz1...) for recipient`, 'warning');
-                }
-                
-                if (!aliceJstzAddress) {
-                    log(`⚠️ Warning: No Jstz recipient set - anyone with secret can claim!`, 'warning');
-                    log(`💡 For security, enter Alice's Jstz address (tz1...) in Counterparty field`, 'info');
-                    log(`📋 Alice's Etherlink address: ${aliceSwap.swap.sender}`, 'info');
+                if (aliceJstzAddress) {
+                    log(`🔒 Recipient (Alice): ${aliceJstzAddress.substring(0, 15)}...`, 'info');
+                } else {
+                    log(`⚠️ Warning: No recipient set - anyone with secret can claim!`, 'warning');
+                    log(`📋 Alice's Etherlink address (for reference): ${aliceSwap.swap.sender}`, 'info');
                 }
                 
                 const response = await jstzRequest('POST', '/initiate', {
                     hashlock: hashlock,
                     expiration: expiration,
-                    recipient: aliceJstzAddress // Only Alice can claim (if set)
+                    recipient: aliceJstzAddress || null // Only Alice can claim (if set)
                     // Note: amount is sent via X-JSTZ-TRANSFER header, not in body
                 }, {
                     requiresSignature: true,
@@ -3515,6 +3700,14 @@
             if (timelockMins >= 60) {
                 log("⚠️ Warning: Your timelock should be shorter than Alice's for safety", 'warning');
             }
+            
+            // 5. Validate recipient address format (Bob locks on Etherlink → needs Alice's 0x)
+            const validatedRecipient = getValidatedCounterparty(true);
+            if (validatedRecipient === false) {
+                // Invalid format - error already shown
+                log("💡 Enter Alice's Etherlink address (0x...) so only she can claim your funds", 'info');
+                return;
+            }
 
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying Alice's swap on Jstz...`;
@@ -3573,20 +3766,15 @@
             try {
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
                 
-                // SECURITY: Get Alice's address from counterparty field if provided
-                // Since we can't auto-verify Jstz, user should enter Alice's address
-                const counterpartyInput = document.getElementById('counterparty-input');
-                let aliceAddress = ethers.constants.AddressZero;
-                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
+                // SECURITY: Bob locks on Etherlink → Alice (recipient) must have 0x address
+                // Recipient was already validated before this function was called
+                const validatedAlice = getValidatedCounterparty(false); // Don't show error again
+                const aliceAddress = validatedAlice || ethers.constants.AddressZero;
                 
-                if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length === 42) {
-                    aliceAddress = counterpartyRaw;
-                    log(`🔒 Setting recipient to Alice: ${aliceAddress.substring(0, 10)}...`, 'info');
-                } else if (counterpartyRaw.startsWith('tz')) {
-                    log(`⚠️ Note: tz1 address ignored for Etherlink - only Alice's 0x address can claim`, 'warning');
+                if (validatedAlice) {
+                    log(`🔒 Recipient (Alice): ${aliceAddress.substring(0, 12)}...`, 'info');
                 } else {
                     log(`⚠️ Warning: No recipient set - anyone with secret can claim!`, 'warning');
-                    log(`💡 For security, enter Alice's Etherlink address in Counterparty field`, 'info');
                 }
                 
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
