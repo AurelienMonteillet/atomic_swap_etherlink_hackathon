@@ -1271,6 +1271,12 @@
                 // Update UI to reflect connected wallet
                 updateWalletConnectionUI('etherlink');
                 
+                // Auto-load swaps if on My Swaps tab
+                const myswapsContent = document.getElementById('myswaps-content');
+                if (myswapsContent && !myswapsContent.classList.contains('hidden')) {
+                    loadMySwaps();
+                }
+                
                 return true;
             } catch (error) {
                 console.error('[DEBUG] Connection error:', error);
@@ -1474,6 +1480,9 @@
             state.signer = null;
             state.contract = null;
             state.connectedWallet = null;
+            // Clear swap history
+            state.mySwaps = [];
+            state.jstzSwaps = [];
             updateRedeemChainIndicator();
             
             // Reset Etherlink button
@@ -1494,6 +1503,9 @@
             
             // Re-enable both wallet buttons
             updateWalletConnectionUI(null);
+            
+            // Reload swaps to show empty state
+            loadMySwaps();
             
             log('Wallet disconnected', 'info');
         }
@@ -4410,13 +4422,15 @@
                     result = await verifySwapOnEtherlink(hashLock, SwapState.OPEN);
                     chain = 'Etherlink';
                 } else {
-                    // Bob will match on Etherlink, Alice on Jstz - try direct HTTP read
-                    log("🔍 Attempting to verify Jstz swap via direct API...", 'warning');
+                    // Bob will match on Etherlink, Alice on Jstz - try direct KV API read (no wallet needed!)
+                    log("🔍 Reading Jstz swap from KV store (read-only, no wallet needed)...", 'system');
                     
-                    // Try to read swap data directly from Jstz
+                    // Try to read swap data directly from Jstz KV store
                     const jstzResult = await verifySwapOnJstzDirect(hashLock);
+                    console.log('[VERIFY] Jstz direct result:', jstzResult);
                     
                     if (jstzResult.valid && jstzResult.swap) {
+                        log("✅ Swap found in KV store (no wallet needed)!", 'success');
                         // Successfully read swap data!
                         const swap = jstzResult.swap;
                         chain = 'Jstz';
@@ -4469,8 +4483,16 @@
                         return;
                     }
                     
-                    // Fallback: couldn't read directly, show Jstz wallet button
-                    log("💡 Connect your Jstz wallet to verify Alice's swap", 'warning');
+                    // Fallback: couldn't read from KV API
+                    if (jstzResult.cannotVerify) {
+                        log("⚠️ Swap not found in KV store. Possible reasons:", 'warning');
+                        log("   • Alice hasn't initiated the swap on Jstz yet", 'warning');
+                        log("   • The swap was just created and KV hasn't synced yet", 'warning');
+                        log("💡 You can verify via Jstz wallet or CLI as fallback", 'info');
+                    } else {
+                        log("⚠️ Could not read swap from KV API. Trying wallet verification as fallback...", 'warning');
+                        log("💡 Connect your Jstz wallet to verify Alice's swap (or use CLI)", 'info');
+                    }
                     
                     // Store hashlock for later use
                     state.pendingJstzVerifyHashlock = hashLock;
@@ -4829,8 +4851,91 @@
             }
         }
         
-        // Load swaps from Jstz
+        // Load swaps from Jstz using public KV API (no wallet signature needed!)
         async function loadJstzSwaps() {
+            if (!state.jstzAddress) return [];
+            
+            try {
+                console.log('[JSTZ SWAPS] Loading swaps from KV store (read-only, no wallet needed)...');
+                
+                // Step 1: Read the list of all swap keys from KV
+                const swapKeys = await readJstzKv('swap_keys');
+                console.log('[JSTZ SWAPS] Swap keys from KV:', swapKeys);
+                
+                if (!swapKeys || !Array.isArray(swapKeys) || swapKeys.length === 0) {
+                    console.log('[JSTZ SWAPS] No swap keys found');
+                    return [];
+                }
+                
+                // Step 2: Read each swap from KV (limit to most recent 100 for performance)
+                const recentKeys = swapKeys.slice(-100);
+                console.log('[JSTZ SWAPS] Reading', recentKeys.length, 'swaps from KV...');
+                
+                const swapsArray = [];
+                const userAddress = state.jstzAddress.toLowerCase();
+                
+                // Read swaps in parallel (but limit concurrency to avoid overwhelming the API)
+                const BATCH_SIZE = 10;
+                for (let i = 0; i < recentKeys.length; i += BATCH_SIZE) {
+                    const batch = recentKeys.slice(i, i + BATCH_SIZE);
+                    const batchPromises = batch.map(async (hashlock) => {
+                        try {
+                            // Read swap data from KV (hashlock might have 0x prefix or not)
+                            const swap = await readJstzKv(hashlock);
+                            if (swap && (swap.sender || swap.recipient)) {
+                                // Ensure hashlock is included in the swap object
+                                if (!swap.hashlock && !swap.hashLock) {
+                                    swap.hashlock = hashlock.startsWith('0x') ? hashlock : '0x' + hashlock;
+                                }
+                                return swap;
+                            }
+                        } catch (e) {
+                            console.warn('[JSTZ SWAPS] Error reading swap', hashlock, e);
+                        }
+                        return null;
+                    });
+                    
+                    const batchResults = await Promise.all(batchPromises);
+                    swapsArray.push(...batchResults.filter(Boolean));
+                }
+                
+                console.log('[JSTZ SWAPS] Total swaps read:', swapsArray.length);
+                
+                // Step 3: Filter swaps for current user
+                const userSwaps = swapsArray.filter(s => {
+                    const isUserSwap = s.sender?.toLowerCase() === userAddress || 
+                                      s.recipient?.toLowerCase() === userAddress;
+                    return isUserSwap;
+                });
+                
+                console.log('[JSTZ SWAPS] User swaps:', userSwaps.length);
+                
+                // Format swaps to match Etherlink format (include ALL statuses for history)
+                return userSwaps.map(swap => ({
+                    swapId: swap.hashlock || swap.hashLock,
+                    hashLock: swap.hashlock || swap.hashLock,
+                    sender: swap.sender,
+                    recipient: swap.recipient,
+                    amount: swap.amountXtz || swap.amount || (swap.amountMutez ? swap.amountMutez / 1000000 : 0),
+                    expiration: swap.expiration,
+                    status: swap.status === 'OPEN' ? 0 : swap.status === 'CLAIMED' ? 1 : 2,
+                    isInitiator: swap.sender?.toLowerCase() === userAddress,
+                    chain: 'jstz',
+                    revealedSecret: swap.revealedSecret || null,
+                    claimedBy: swap.claimedBy || null,
+                    claimedAt: swap.claimedAt || null
+                }));
+                
+            } catch (error) {
+                console.error('[JSTZ SWAPS] Error loading from KV:', error);
+                // Fallback to wallet method if KV fails
+                console.log('[JSTZ SWAPS] Falling back to wallet method...');
+                return await loadJstzSwapsFromWallet();
+            }
+        }
+        
+        // Fallback: Load swaps from Jstz using wallet (old method)
+        async function loadJstzSwapsFromWallet() {
             if (!state.jstzAddress) return [];
             
             // Skip if wallet extension not available (don't show modal)
@@ -4843,7 +4948,7 @@
                 // Call the /swaps endpoint to get all swaps (silent to avoid popup spam)
                 const result = await jstzRequest('POST', '/swaps', {}, { forceWallet: true, silent: true });
                 
-                console.log('[JSTZ SWAPS] Result:', result);
+                console.log('[JSTZ SWAPS] Wallet result:', result);
                 
                 if (result.success && result.message) {
                     let swapsData = result.message;
@@ -4902,7 +5007,7 @@
                 
                 return [];
             } catch (error) {
-                console.error('[JSTZ SWAPS] Error:', error);
+                console.error('[JSTZ SWAPS] Wallet error:', error);
                 return [];
             }
         }
@@ -6114,11 +6219,14 @@
                 state.provider = null;
                 state.signer = null;
                 state.contract = null;
+                state.mySwaps = []; // Clear Etherlink swap history
                 textEl.innerText = 'Connect Etherlink';
                 balanceEl.classList.add('hidden');
                 btn.classList.remove('border-ether-green', 'text-ether-green', 'bg-ether-green/10');
                 updateWalletConnectionUI(null);
                 updateNetworkBadge(null, 'Not Connected');
+                // Reload swaps to update the list (will show only Jstz swaps or empty state)
+                loadMySwaps();
                 log('Etherlink wallet disconnected', 'info');
                 return;
             }
@@ -6140,6 +6248,12 @@
                 
                 // Fetch and display balances
                 await fetchAllBalances();
+                
+                // Auto-load swaps if on My Swaps tab (also done in connectEtherlink, but ensure it here too)
+                const myswapsContent = document.getElementById('myswaps-content');
+                if (myswapsContent && !myswapsContent.classList.contains('hidden')) {
+                    loadMySwaps();
+                }
                 
                 // Show balance next to address
                 if (state.tokenBalances['XTZ']) {
@@ -6163,11 +6277,14 @@
             if (state.jstzAddress) {
                 // Disconnect
                 state.jstzAddress = null;
+                state.jstzSwaps = []; // Clear Jstz swap history
                 textEl.innerText = 'Connect Jstz';
                 btn.classList.remove('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
                 if (!state.etherlinkAddress) {
                     updateWalletConnectionUI(null);
                 }
+                // Reload swaps to update the list (will show only Etherlink swaps or empty state)
+                loadMySwaps();
                 log('Jstz wallet disconnected', 'info');
                 return;
             }
@@ -6209,6 +6326,12 @@
                     
                     // Fetch Jstz balance
                     await fetchJstzBalance();
+                    
+                    // Auto-load swaps if on My Swaps tab
+                    const myswapsContent = document.getElementById('myswaps-content');
+                    if (myswapsContent && !myswapsContent.classList.contains('hidden')) {
+                        loadMySwaps();
+                    }
                 } else {
                     // No extension - show error and install link
                     log(`❌ Jstz wallet extension not found`, 'error');
