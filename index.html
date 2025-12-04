@@ -5348,31 +5348,83 @@
             let foundOn = null;
             
             try {
-                // 1. Search on Etherlink first
+                // 1. Search on Etherlink using Blockscout API v2 (no block limit!)
                 try {
-                    statusEl.textContent = '🔍 Checking Etherlink...';
+                    statusEl.textContent = '🔍 Checking Etherlink via Explorer API...';
                     
-                    if (window.ethereum) {
-                        const provider = new ethers.providers.Web3Provider(window.ethereum);
-                        const contract = new ethers.Contract(HTLC_ADDRESS, HTLC_ABI, provider);
+                    const networkConfig = NETWORK_CONFIG[128123]; // Etherlink Testnet
+                    const htlcAddress = networkConfig.htlcAddress;
+                    
+                    // Use Blockscout API v2 to get all logs for the contract
+                    const explorerApiUrl = `https://testnet.explorer.etherlink.com/api/v2/addresses/${htlcAddress}/logs`;
+                    const response = await fetch(explorerApiUrl);
+                    
+                    if (response.ok) {
+                        const logsData = await response.json();
                         
-                        // Get swap details
-                        const swap = await contract.swaps(swapId);
+                        // SwapClaimed event topic0 (keccak256 of event signature)
+                        // event SwapClaimed(bytes32 indexed swapId, address claimer, bytes secret)
+                        const SWAP_CLAIMED_TOPIC = '0x823ee297c918a1586c47af4285532df29d71c68bd5d6fe449f82c145e35e9708';
                         
-                        // Check if swap is claimed (state == 2)
-                        if (swap && swap.state === 2) {
-                            // Secret was revealed - get it from events
-                            const filter = contract.filters.Claimed(swapId);
-                            const events = await contract.queryFilter(filter);
-                            
-                            if (events.length > 0) {
-                                foundSecret = events[0].args.secret;
-                                foundOn = 'Etherlink';
+                        // Find SwapClaimed event for this swapId
+                        const claimLog = logsData.items?.find(log => 
+                            log.topics[0]?.toLowerCase() === SWAP_CLAIMED_TOPIC.toLowerCase() &&
+                            log.topics[1]?.toLowerCase() === swapId.toLowerCase()
+                        );
+                        
+                        if (claimLog) {
+                            // Parse the data field to extract the secret
+                            // Data structure: claimer (32 bytes) + sender (32 bytes) + offset (32 bytes) + length (32 bytes) + secret (32 bytes)
+                            const data = claimLog.data;
+                            // Secret is the last 32 bytes (64 hex chars) of the data
+                            // Format: 0x + ... + secret (32 bytes at the end)
+                            if (data && data.length >= 130) {
+                                // Extract last 64 hex chars (32 bytes) which is the secret
+                                const secretHex = '0x' + data.slice(-64);
+                                foundSecret = secretHex;
+                                foundOn = 'Etherlink (Explorer API)';
+                                console.log('Found secret via Blockscout API:', foundSecret);
                             }
                         }
                     }
                 } catch (ethErr) {
-                    console.log('Etherlink search failed:', ethErr.message);
+                    console.log('Etherlink Explorer API failed:', ethErr.message);
+                    
+                    // Fallback: try direct RPC query with limited range
+                    try {
+                        statusEl.textContent = '🔍 Checking Etherlink via RPC...';
+                        
+                        const networkConfig = NETWORK_CONFIG[128123];
+                        const readOnlyProvider = new ethers.providers.JsonRpcProvider(networkConfig.rpcUrl);
+                        const htlcAddress = networkConfig.htlcAddress;
+                        const contract = new ethers.Contract(htlcAddress, CONFIG.etherlink.abi, readOnlyProvider);
+                        
+                        // Check if swap is claimed first
+                        const swap = await contract.getSwap(swapId);
+                        const swapStatus = swap[5];
+                        
+                        if (swapStatus === 1) {
+                            // Try to get from recent events
+                            const CHUNK_SIZE = 499;
+                            const currentBlock = await readOnlyProvider.getBlockNumber();
+                            const fromBlock = Math.max(0, currentBlock - 3000);
+                            
+                            const filter = contract.filters.SwapClaimed(swapId);
+                            for (let start = fromBlock; start < currentBlock && !foundSecret; start += CHUNK_SIZE) {
+                                const end = Math.min(start + CHUNK_SIZE - 1, currentBlock);
+                                try {
+                                    const events = await contract.queryFilter(filter, start, end);
+                                    if (events.length > 0) {
+                                        foundSecret = events[0].args.secret;
+                                        foundOn = 'Etherlink';
+                                        break;
+                                    }
+                                } catch (e) { }
+                            }
+                        }
+                    } catch (fallbackErr) {
+                        console.log('Etherlink RPC fallback failed:', fallbackErr.message);
+                    }
                 }
                 
                 // 2. Search on Jstz if not found on Etherlink
@@ -5380,15 +5432,19 @@
                     try {
                         statusEl.textContent = '🔍 Checking Jstz...';
                         
-                        const jstzUrl = `${JSTZ_NODE}/api/kv/${JSTZ_CONTRACT_ADDRESS}/swaps/${swapId}`;
-                        const response = await fetch(jstzUrl);
+                        const jstzContractAddress = CONFIG.jstz.contractAddress;
                         
-                        if (response.ok) {
-                            const swapData = await response.json();
-                            
-                            // Check if swap has secret revealed (claimed state)
-                            if (swapData && swapData.secret && swapData.secret !== '0x' && swapData.secret.length > 2) {
-                                foundSecret = swapData.secret;
+                        // Use Jstz smart function GET endpoint to retrieve swap details
+                        const getUrl = `https://privatenet.jstz.info/jstz/${jstzContractAddress}/swap/${swapId}`;
+                        const getResponse = await fetch(getUrl, { 
+                            method: 'GET',
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        
+                        if (getResponse.ok) {
+                            const getSwapData = await getResponse.json();
+                            if (getSwapData && getSwapData.secret && getSwapData.secret !== '0x' && getSwapData.secret.length > 2) {
+                                foundSecret = getSwapData.secret;
                                 foundOn = 'Jstz';
                             }
                         }
@@ -5788,6 +5844,9 @@
                 log(`✅ Claimed on Etherlink!`, 'success');
                 logTx(tx.hash, '✅ Claim confirmed');
                 log(`💰 ${truncatedClaimer} received ${swap.amount} XTZ`, 'success');
+                
+                // Store secret in localStorage for future auto-fill
+                saveRevealedSecret(swapId, secret);
                 
                 updateProgress(4);
                 
