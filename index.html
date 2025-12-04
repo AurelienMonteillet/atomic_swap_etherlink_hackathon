@@ -708,7 +708,14 @@
                                             </div>
                                         </div>
                                     </label>
-                                    <input type="text" id="secret-input-claim" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                                    <div class="flex gap-2">
+                                        <input type="text" id="secret-input-claim" placeholder="0x..." class="flex-1 input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                                        <button onclick="autoFillSecret()" id="autofill-secret-btn" class="px-4 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all flex items-center gap-2 shadow-lg shadow-purple-500/20" title="Search for revealed secret on both chains">
+                                            <i class="fa-solid fa-magic-wand-sparkles"></i>
+                                            <span>Auto-fill</span>
+                                        </button>
+                                    </div>
+                                    <p id="autofill-status" class="text-xs text-gray-500 mt-1 hidden"></p>
                                 </div>
 
                                 <!-- Connected Chain Indicator -->
@@ -5314,6 +5321,109 @@
             setTimeout(() => {
                 modal.style.display = 'none';
             }, 300);
+        }
+
+        // Auto-fill secret by searching for revealed secret on both chains
+        async function autoFillSecret() {
+            const swapId = document.getElementById('swap-id-input')?.value;
+            const statusEl = document.getElementById('autofill-status');
+            const btn = document.getElementById('autofill-secret-btn');
+            const secretInput = document.getElementById('secret-input-claim');
+            
+            if (!swapId || !isValidHashLock(swapId)) {
+                statusEl.textContent = '⚠️ Please enter a valid Swap ID first';
+                statusEl.className = 'text-xs text-yellow-400 mt-1';
+                statusEl.classList.remove('hidden');
+                return;
+            }
+            
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
+            statusEl.textContent = '🔍 Searching for revealed secret on both chains...';
+            statusEl.className = 'text-xs text-blue-400 mt-1';
+            statusEl.classList.remove('hidden');
+            
+            let foundSecret = null;
+            let foundOn = null;
+            
+            try {
+                // 1. Search on Etherlink first
+                try {
+                    statusEl.textContent = '🔍 Checking Etherlink...';
+                    
+                    if (window.ethereum) {
+                        const provider = new ethers.providers.Web3Provider(window.ethereum);
+                        const contract = new ethers.Contract(HTLC_ADDRESS, HTLC_ABI, provider);
+                        
+                        // Get swap details
+                        const swap = await contract.swaps(swapId);
+                        
+                        // Check if swap is claimed (state == 2)
+                        if (swap && swap.state === 2) {
+                            // Secret was revealed - get it from events
+                            const filter = contract.filters.Claimed(swapId);
+                            const events = await contract.queryFilter(filter);
+                            
+                            if (events.length > 0) {
+                                foundSecret = events[0].args.secret;
+                                foundOn = 'Etherlink';
+                            }
+                        }
+                    }
+                } catch (ethErr) {
+                    console.log('Etherlink search failed:', ethErr.message);
+                }
+                
+                // 2. Search on Jstz if not found on Etherlink
+                if (!foundSecret) {
+                    try {
+                        statusEl.textContent = '🔍 Checking Jstz...';
+                        
+                        const jstzUrl = `${JSTZ_NODE}/api/kv/${JSTZ_CONTRACT_ADDRESS}/swaps/${swapId}`;
+                        const response = await fetch(jstzUrl);
+                        
+                        if (response.ok) {
+                            const swapData = await response.json();
+                            
+                            // Check if swap has secret revealed (claimed state)
+                            if (swapData && swapData.secret && swapData.secret !== '0x' && swapData.secret.length > 2) {
+                                foundSecret = swapData.secret;
+                                foundOn = 'Jstz';
+                            }
+                        }
+                    } catch (jstzErr) {
+                        console.log('Jstz search failed:', jstzErr.message);
+                    }
+                }
+                
+                // 3. Also check state.secret (if user is the initiator)
+                if (!foundSecret && state.secret && state.hash === swapId) {
+                    foundSecret = state.secret;
+                    foundOn = 'Local (you are the initiator)';
+                }
+                
+                // Update UI based on result
+                if (foundSecret) {
+                    secretInput.value = foundSecret;
+                    statusEl.innerHTML = `<i class="fa-solid fa-check-circle"></i> Secret found on <strong>${foundOn}</strong>!`;
+                    statusEl.className = 'text-xs text-green-400 mt-1';
+                    log(`✨ Secret auto-filled from ${foundOn}!`, 'success');
+                } else {
+                    statusEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Secret not revealed yet on either chain';
+                    statusEl.className = 'text-xs text-orange-400 mt-1';
+                    log('Secret not found - swap may not have been claimed yet', 'warning');
+                }
+                
+            } catch (error) {
+                console.error('Auto-fill error:', error);
+                statusEl.textContent = '❌ Error searching for secret';
+                statusEl.className = 'text-xs text-red-400 mt-1';
+            } finally {
+                // Reset button
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-magic-wand-sparkles"></i> <span>Auto-fill</span>';
+            }
         }
 
         // Unified claim function
