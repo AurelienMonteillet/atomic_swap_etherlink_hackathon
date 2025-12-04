@@ -1718,6 +1718,18 @@
         }
         
         /**
+         * Build Jstz dashboard URL for a transaction hash
+         * @param hash - Transaction hash (with or without 0x prefix)
+         * @returns Dashboard URL
+         */
+        function getJstzExplorerUrl(hash) {
+            if (!hash) return null;
+            // Remove 0x prefix if present
+            const hashForUrl = hash.startsWith('0x') ? hash.slice(2) : hash;
+            return `https://privatenet.dashboard.jstz.info/operations/${hashForUrl}`;
+        }
+
+        /**
          * Make a request to Jstz smart function
          * @param method - HTTP method
          * @param path - Endpoint path (e.g., /initiate, /claim, /refund)
@@ -1914,16 +1926,18 @@
                         log(`✅ Jstz operation successful!`, 'success');
                         
                         if (operationId && typeof operationId === 'string' && operationId.startsWith('msg_')) {
-                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${operationId}?tab=response`;
+                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${operationId}`;
                             log(`<a href="${operationUrl}" target="_blank" class="text-jstz-accent hover:underline">📋 View on Dashboard: ${operationId}</a>`, 'info');
                         } else if (operationHash) {
-                            // Link to dashboard with hash (may not work but better than nothing)
+                            // Use hash directly (remove 0x prefix if present)
+                            const hashForUrl = operationHash.startsWith('0x') ? operationHash.slice(2) : operationHash;
+                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${hashForUrl}`;
                             log(`🔗 Operation hash: <code class="text-xs bg-black/50 px-1 rounded">${operationHash.substring(0, 18)}...</code>`, 'info');
-                            log(`<a href="https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}" target="_blank" class="text-jstz-accent hover:underline">📋 View Contract on Dashboard</a>`, 'info');
+                            log(`<a href="${operationUrl}" target="_blank" class="text-jstz-accent hover:underline">📋 View Transaction on Dashboard</a>`, 'info');
                         }
                         
                         console.log('[JSTZ] Parsed response:', returnedMessage);
-                        return { success: true, message: returnedMessage, operationId, operationUrl };
+                        return { success: true, message: returnedMessage, operationId, operationHash, operationUrl };
                         
                     } catch (sdkError) {
                         console.error('[JSTZ] SDK injection error:', sdkError);
@@ -3430,7 +3444,7 @@
                     sender: state.jstzAddress,
                     hashlock: state.hash,
                     txHash: response.operationHash,
-                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`,
+                    explorerUrl: getJstzExplorerUrl(response.operationHash),
                     extraActions: [{
                         label: '📋 Copy Hash',
                         onClick: `navigator.clipboard.writeText('${state.hash}'); log('✅ Hash copied!', 'success')`,
@@ -3633,7 +3647,7 @@
                     sender: state.jstzAddress,
                     hashlock: hashlock,
                     txHash: response.operationHash,
-                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`,
+                    explorerUrl: getJstzExplorerUrl(response.operationHash),
                     extraActions: [{
                         label: '👀 Watch for Secret',
                         onClick: `closeSuccessModal()`,
@@ -3976,7 +3990,7 @@
                     recipient: claimerAddress,
                     hashlock: hashLock,
                     txHash: response.operationHash,
-                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`
+                    explorerUrl: getJstzExplorerUrl(response.operationHash)
                 });
 
             } catch (error) {
@@ -4968,13 +4982,18 @@
             
             // Get explorer URL based on chain
             const networkConfig = NETWORK_CONFIG[state.currentChainId];
-            const explorerUrl = isJstz ? 
-                `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}` :
-                (networkConfig?.explorer || '');
             
             // Determine tx hash to show (refund or claim)
             const txHash = swap.refundTxHash || swap.claimTxHash;
             const txType = swap.refundTxHash ? 'Refund' : (swap.claimTxHash ? 'Claim' : null);
+            
+            // Build explorer URL with transaction hash if available
+            let explorerUrl = null;
+            if (isJstz && txHash) {
+                explorerUrl = getJstzExplorerUrl(txHash);
+            } else if (!isJstz && networkConfig?.explorer) {
+                explorerUrl = txHash ? `${networkConfig.explorer}/tx/${txHash}` : networkConfig.explorer;
+            }
             
             // Border color based on chain
             const borderClass = isJstz ? 'border-jstz-accent/30 hover:border-jstz-accent/60' : 'border-white/10 hover:border-white/20';
@@ -5023,10 +5042,10 @@
                             </span>
                         </div>
                         
-                        ${txHash && !isJstz ? `
+                        ${txHash && explorerUrl ? `
                         <div class="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
                             <span class="text-gray-500">${txType} TX:</span>
-                            <a href="${explorerUrl}/tx/${txHash}" target="_blank" class="flex items-center gap-1 text-ether-green hover:underline">
+                            <a href="${explorerUrl}" target="_blank" class="flex items-center gap-1 ${isJstz ? 'text-jstz-accent' : 'text-ether-green'} hover:underline">
                                 <code class="font-mono">${txHash.substring(0, 8)}...${txHash.slice(-6)}</code>
                                 <i class="fa-solid fa-external-link text-[10px]"></i>
                             </a>
@@ -5432,20 +5451,40 @@
                     try {
                         statusEl.textContent = '🔍 Checking Jstz...';
                         
-                        const jstzContractAddress = CONFIG.jstz.contractAddress;
+                        // First, check if swap is already loaded in state.jstzSwaps
+                        const jstzSwap = state.jstzSwaps?.find(s => 
+                            (s.hashLock || s.swapId)?.toLowerCase() === swapId.toLowerCase()
+                        );
                         
-                        // Use Jstz smart function GET endpoint to retrieve swap details
-                        const getUrl = `https://privatenet.jstz.info/jstz/${jstzContractAddress}/swap/${swapId}`;
-                        const getResponse = await fetch(getUrl, { 
-                            method: 'GET',
-                            headers: { 'Accept': 'application/json' }
-                        });
-                        
-                        if (getResponse.ok) {
-                            const getSwapData = await getResponse.json();
-                            if (getSwapData && getSwapData.secret && getSwapData.secret !== '0x' && getSwapData.secret.length > 2) {
-                                foundSecret = getSwapData.secret;
-                                foundOn = 'Jstz';
+                        if (jstzSwap && jstzSwap.revealedSecret && jstzSwap.revealedSecret !== '0x' && jstzSwap.revealedSecret.length > 2) {
+                            foundSecret = jstzSwap.revealedSecret;
+                            foundOn = 'Jstz (from your swaps)';
+                        } else if (isJstzExtensionInstalled() && state.jstzAddress) {
+                            // Try to fetch swap via wallet if connected
+                            try {
+                                statusEl.textContent = '🔍 Querying Jstz via wallet...';
+                                const result = await jstzRequest('POST', `/swap/${swapId}`, {}, { 
+                                    forceWallet: true, 
+                                    silent: true 
+                                });
+                                
+                                if (result && result.success && result.message) {
+                                    let swapData = result.message;
+                                    if (typeof swapData === 'string') {
+                                        try {
+                                            swapData = JSON.parse(swapData);
+                                        } catch (e) {
+                                            console.log('Could not parse Jstz swap data');
+                                        }
+                                    }
+                                    
+                                    if (swapData && swapData.revealedSecret && swapData.revealedSecret !== '0x' && swapData.revealedSecret.length > 2) {
+                                        foundSecret = swapData.revealedSecret;
+                                        foundOn = 'Jstz (via wallet)';
+                                    }
+                                }
+                            } catch (walletErr) {
+                                console.log('Jstz wallet query failed:', walletErr.message);
                             }
                         }
                     } catch (jstzErr) {
@@ -5466,7 +5505,12 @@
                     statusEl.className = 'text-xs text-green-400 mt-1';
                     log(`✨ Secret auto-filled from ${foundOn}!`, 'success');
                 } else {
-                    statusEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Secret not revealed yet on either chain';
+                    // Provide helpful message based on what was checked
+                    let helpMsg = '';
+                    if (!state.jstzAddress || !isJstzExtensionInstalled()) {
+                        helpMsg = '<br><span class="text-gray-400 text-[10px]">💡 Tip: Connect Jstz wallet and load "My Swaps" to check Jstz swaps</span>';
+                    }
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Secret not revealed yet on either chain${helpMsg}`;
                     statusEl.className = 'text-xs text-orange-400 mt-1';
                     log('Secret not found - swap may not have been claimed yet', 'warning');
                 }
@@ -5723,7 +5767,7 @@
                     recipient: state.jstzAddress,
                     hashlock: hashLock,
                     txHash: response.operationHash,
-                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`
+                    explorerUrl: getJstzExplorerUrl(response.operationHash)
                 });
                 
                 // Reload swaps
