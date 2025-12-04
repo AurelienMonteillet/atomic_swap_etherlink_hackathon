@@ -1720,13 +1720,13 @@
         /**
          * Build Jstz dashboard URL for a transaction hash
          * @param hash - Transaction hash (with or without 0x prefix)
-         * @returns Dashboard URL
+         * @returns Dashboard URL with response tab
          */
         function getJstzExplorerUrl(hash) {
             if (!hash) return null;
             // Remove 0x prefix if present
             const hashForUrl = hash.startsWith('0x') ? hash.slice(2) : hash;
-            return `https://privatenet.dashboard.jstz.info/operations/${hashForUrl}`;
+            return `https://privatenet.dashboard.jstz.info/operations/${hashForUrl}?tab=response`;
         }
 
         /**
@@ -1926,12 +1926,11 @@
                         log(`✅ Jstz operation successful!`, 'success');
                         
                         if (operationId && typeof operationId === 'string' && operationId.startsWith('msg_')) {
-                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${operationId}`;
+                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${operationId}?tab=response`;
                             log(`<a href="${operationUrl}" target="_blank" class="text-jstz-accent hover:underline">📋 View on Dashboard: ${operationId}</a>`, 'info');
                         } else if (operationHash) {
-                            // Use hash directly (remove 0x prefix if present)
-                            const hashForUrl = operationHash.startsWith('0x') ? operationHash.slice(2) : operationHash;
-                            operationUrl = `https://privatenet.dashboard.jstz.info/operations/${hashForUrl}`;
+                            // Use helper function to build URL with response tab
+                            operationUrl = getJstzExplorerUrl(operationHash);
                             log(`🔗 Operation hash: <code class="text-xs bg-black/50 px-1 rounded">${operationHash.substring(0, 18)}...</code>`, 'info');
                             log(`<a href="${operationUrl}" target="_blank" class="text-jstz-accent hover:underline">📋 View Transaction on Dashboard</a>`, 'info');
                         }
@@ -5888,9 +5887,6 @@
                 log(`✅ Claimed on Etherlink!`, 'success');
                 logTx(tx.hash, '✅ Claim confirmed');
                 log(`💰 ${truncatedClaimer} received ${swap.amount} XTZ`, 'success');
-                
-                // Store secret in localStorage for future auto-fill
-                saveRevealedSecret(swapId, secret);
                 
                 updateProgress(4);
                 
