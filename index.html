@@ -1735,11 +1735,13 @@
          * @returns KV value or null
          */
         async function readJstzKv(key) {
+            console.log('[KV] readJstzKv called with key:', key);
             const jstzContractAddress = CONFIG.jstz.contractAddress;
             const jstzRpcUrl = CONFIG.jstz.rpcUrl;
             
             // Remove 0x prefix if present
             const kvKey = key.startsWith('0x') ? key.slice(2) : key;
+            console.log('[KV] Using KV key (without 0x):', kvKey);
             
             // Method 1: Try using Jstz SDK if available
             if (window.JstzClient) {
@@ -1757,20 +1759,30 @@
                             // SDK might return value directly or in a value property
                             const value = kvData.value !== undefined ? kvData.value : kvData;
                             // If it's a string (JSON-encoded), parse it
-                            return typeof value === 'string' ? JSON.parse(value) : value;
+                            const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+                            if (parsed) {
+                                console.log('[KV] SDK returned valid data');
+                                return parsed;
+                            }
                         } catch (e) {
                             console.log('[KV] SDK parse error:', e);
-                            return kvData.value || kvData;
+                            // Continue to HTTP fallback
                         }
+                    } else {
+                        console.log('[KV] SDK returned null/undefined, trying HTTP fallback');
                     }
                 } catch (sdkErr) {
-                    console.log('[KV] SDK read failed:', sdkErr.message);
+                    console.log('[KV] SDK read failed:', sdkErr.message, '- trying HTTP fallback');
                 }
+            } else {
+                console.log('[KV] SDK not available, using HTTP fallback');
             }
             
             // Method 2: Fallback to direct HTTP API
+            console.log('[KV] Trying HTTP API fallback...');
             try {
                 const kvUrl = `${jstzRpcUrl}/accounts/${jstzContractAddress}/kv?key=${kvKey}`;
+                console.log('[KV] HTTP URL:', kvUrl);
                 const kvResponse = await fetch(kvUrl, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
@@ -1779,30 +1791,42 @@
                 if (kvResponse.ok) {
                     const kvData = await kvResponse.json();
                     console.log('[KV] HTTP response:', kvData);
+                    console.log('[KV] HTTP response type:', typeof kvData);
+                    console.log('[KV] HTTP response is string?', typeof kvData === 'string');
                     
                     // API returns a JSON string (double-encoded), need to parse it
                     if (kvData) {
                         try {
-                            // If it's a string, parse it
+                            // If it's a string, parse it (this is the case with the API)
                             if (typeof kvData === 'string') {
-                                return JSON.parse(kvData);
+                                console.log('[KV] Parsing string response...');
+                                const parsed = JSON.parse(kvData);
+                                console.log('[KV] Parsed result:', parsed);
+                                return parsed;
                             }
                             // If it has a value property, use that
-                            if (kvData.value) {
+                            if (kvData.value !== undefined) {
+                                console.log('[KV] Using value property...');
                                 return typeof kvData.value === 'string' ? JSON.parse(kvData.value) : kvData.value;
                             }
                             // Otherwise return as-is
+                            console.log('[KV] Returning as-is');
                             return kvData;
                         } catch (e) {
-                            console.log('[KV] Parse error:', e);
+                            console.log('[KV] Parse error:', e, 'Raw data:', kvData);
                             return kvData;
                         }
+                    } else {
+                        console.log('[KV] No data in response');
                     }
+                } else {
+                    console.log('[KV] HTTP response not OK:', kvResponse.status, kvResponse.statusText);
                 }
             } catch (httpErr) {
                 console.log('[KV] HTTP read failed:', httpErr.message);
             }
             
+            console.log('[KV] All methods failed, returning null');
             return null;
         }
 
@@ -2363,7 +2387,6 @@
                     if (swap && swap.status === 'OPEN') {
                         // Counterparty has locked!
                         stopCounterpartyPolling();
-                        const swap = swapData.swap;
                         
                         log(`🎉 Counterparty locked ${swap.amountXtz} XTZ on Jstz!`, 'success');
                         addNotification('success', 'Counterparty Locked!', `${swap.amountXtz} XTZ locked on Jstz - Ready to claim!`, hashlock, 'jstz');
