@@ -35,6 +35,7 @@ Thumbs.db
 screenshots/
 # Allow logo/favicon images
 !image.png
+!favicon.png
 *.png
 *.jpg
 
