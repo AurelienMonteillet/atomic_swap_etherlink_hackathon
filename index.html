@@ -557,6 +557,9 @@
                                         <button id="verify-jstz-btn" onclick="verifyViaJstzWallet()" class="hidden px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 text-xs font-bold whitespace-nowrap transition animate-pulse">
                                             <i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify
                                         </button>
+                                        <button id="skip-verify-btn" onclick="skipJstzVerification()" class="hidden px-3 py-2 rounded-lg bg-orange-500/20 border border-orange-500/30 text-orange-400 hover:bg-orange-500/30 text-xs font-bold whitespace-nowrap transition" title="For CLI users who verified manually">
+                                            <i class="fa-solid fa-terminal mr-1"></i> I verified via CLI
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -2824,6 +2827,8 @@
                 if (verifyBtn) verifyBtn.classList.add('hidden');
                 const verifyJstzBtn = document.getElementById('verify-jstz-btn');
                 if (verifyJstzBtn) verifyJstzBtn.classList.add('hidden');
+                const skipVerifyBtn = document.getElementById('skip-verify-btn');
+                if (skipVerifyBtn) skipVerifyBtn.classList.add('hidden');
                 const aliceDetails = document.getElementById('alice-swap-details');
                 if (aliceDetails) aliceDetails.classList.add('hidden');
                 
@@ -2866,13 +2871,15 @@
                 const verifyBtn = document.getElementById('verify-swap-btn');
                 if (verifyBtn) verifyBtn.classList.remove('hidden');
                 
-                // Hide Jstz verify button initially (shown only when direct verify fails)
+                // Hide Jstz verify button and CLI skip button initially (shown only when direct verify fails)
                 const verifyJstzBtn = document.getElementById('verify-jstz-btn');
                 if (verifyJstzBtn) {
                     verifyJstzBtn.classList.add('hidden');
                     verifyJstzBtn.innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> Connect Jstz to Verify`;
                     verifyJstzBtn.disabled = false;
                 }
+                const skipVerifyBtn = document.getElementById('skip-verify-btn');
+                if (skipVerifyBtn) skipVerifyBtn.classList.add('hidden');
                 
                 // Hide Alice swap details initially
                 const aliceDetails = document.getElementById('alice-swap-details');
@@ -3998,6 +4005,73 @@
         }
         
         // ============================================
+        // SKIP JSTZ VERIFICATION (for CLI users)
+        // ============================================
+        
+        function skipJstzVerification() {
+            const hashInput = document.getElementById('hash-input');
+            const hashLock = hashInput.value.trim();
+            const aliceDetails = document.getElementById('alice-swap-details');
+            const actionBtn = document.getElementById('main-action-btn');
+            const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+            const skipVerifyBtn = document.getElementById('skip-verify-btn');
+            
+            if (!isValidHashLock(hashLock)) {
+                log("❌ Please enter a valid HashLock first", 'error');
+                return;
+            }
+            
+            // Ask for confirmation
+            const confirmed = confirm(
+                "⚠️ IMPORTANT: Only proceed if you have verified the swap via CLI!\n\n" +
+                "Run this command to verify:\n" +
+                `jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'\n\n` +
+                "Make sure:\n" +
+                "✓ The swap exists and is OPEN\n" +
+                "✓ The amount is what you agreed upon\n" +
+                "✓ The expiration gives you enough time\n\n" +
+                "Click OK to continue, Cancel to abort."
+            );
+            
+            if (!confirmed) {
+                log("❌ Verification cancelled", 'warning');
+                return;
+            }
+            
+            // Mark as verified (user takes responsibility)
+            state.aliceSwapVerified = true;
+            state.aliceSwapChain = 'jstz';
+            state.currentSwapId = hashLock;
+            state.hash = hashLock;
+            
+            // Update UI
+            aliceDetails.classList.remove('hidden');
+            document.getElementById('alice-swap-amount').textContent = '(Verified via CLI)';
+            document.getElementById('alice-swap-expiry').textContent = '(Check CLI output)';
+            document.getElementById('alice-swap-sender').textContent = '(Check CLI output)';
+            document.getElementById('alice-swap-chain').textContent = 'Jstz';
+            document.getElementById('alice-swap-status').textContent = 'CLI VERIFIED';
+            document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400';
+            
+            // Hide verification buttons
+            verifyJstzBtn.classList.add('hidden');
+            skipVerifyBtn.classList.add('hidden');
+            
+            // Enable the main action button
+            actionBtn.disabled = false;
+            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-gradient-to-r from-ether-green to-green-400 hover:opacity-90 text-black shadow-lg shadow-ether-green/20 flex items-center justify-center gap-2 transition";
+            actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+            
+            log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
+            log("⚠️ CLI VERIFICATION ACCEPTED", 'warning');
+            log("You confirmed verifying the swap via CLI", 'info');
+            log("Make sure you checked the amount and expiration!", 'warning');
+            log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
+            log("✅ Ready to match swap on Etherlink", 'success');
+            log("Enter your amount and click 'Match Swap'", 'info');
+        }
+        
+        // ============================================
         // VERIFY VIA JSTZ WALLET (temporary connection)
         // ============================================
         
@@ -4242,15 +4316,17 @@
                     // Store hashlock for later use
                     state.pendingJstzVerifyHashlock = hashLock;
                     
-                    // Show the "Connect Jstz to Verify" button
+                    // Show the "Connect Jstz to Verify" button AND "I verified via CLI" button
                     const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+                    const skipVerifyBtn = document.getElementById('skip-verify-btn');
                     verifyJstzBtn.classList.remove('hidden');
+                    skipVerifyBtn.classList.remove('hidden');
                     verifyBtn.classList.add('hidden');
                     
                     // Show placeholder details
                     aliceDetails.classList.remove('hidden');
                     document.getElementById('alice-swap-amount').textContent = '? XTZ';
-                    document.getElementById('alice-swap-expiry').textContent = 'Click "Connect Jstz" to verify';
+                    document.getElementById('alice-swap-expiry').textContent = 'Verify via wallet or CLI';
                     document.getElementById('alice-swap-sender').textContent = 'Unknown';
                     document.getElementById('alice-swap-chain').textContent = 'Jstz';
                     document.getElementById('alice-swap-status').textContent = 'PENDING VERIFICATION';
