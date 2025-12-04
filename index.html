@@ -3329,6 +3329,7 @@
             }
             
             log(`✓ Found Alice's swap: ${aliceSwap.swap.amount} XTZ locked`, 'success');
+            log(`✓ Alice's address: ${aliceSwap.swap.sender.substring(0, 10)}...`, 'success');
             log(`✓ Expires: ${aliceSwap.swap.expirationDate}`, 'success');
             
             // 6. Check Alice's swap hasn't expired
@@ -3375,10 +3376,15 @@
                 log(`Calling Jstz HTLC: jstz://htlc/initiate`, 'system');
                 log(`💰 Transferring ${amountMutez} mutez (${amount} XTZ) to smart function`, 'warning');
                 
+                // SECURITY: Set Alice's Etherlink address as recipient
+                // Only Alice (who initiated on Etherlink) can claim Bob's funds on Jstz
+                const aliceAddress = aliceSwap.swap.sender;
+                log(`🔒 Setting recipient to Alice: ${aliceAddress.substring(0, 10)}...`, 'info');
+                
                 const response = await jstzRequest('POST', '/initiate', {
                     hashlock: hashlock,
                     expiration: expiration,
-                    recipient: null
+                    recipient: aliceAddress // Only Alice can claim!
                     // Note: amount is sent via X-JSTZ-TRANSFER header, not in body
                 }, {
                     requiresSignature: true,
@@ -3540,17 +3546,36 @@
             try {
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
                 
+                // SECURITY: Get Alice's address from counterparty field if provided
+                // Since we can't auto-verify Jstz, user should enter Alice's address
+                const counterpartyInput = document.getElementById('counterparty-input');
+                let aliceAddress = ethers.constants.AddressZero;
+                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
+                
+                if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length === 42) {
+                    aliceAddress = counterpartyRaw;
+                    log(`🔒 Setting recipient to Alice: ${aliceAddress.substring(0, 10)}...`, 'info');
+                } else if (counterpartyRaw.startsWith('tz')) {
+                    log(`⚠️ Note: tz1 address ignored for Etherlink - only Alice's 0x address can claim`, 'warning');
+                } else {
+                    log(`⚠️ Warning: No recipient set - anyone with secret can claim!`, 'warning');
+                    log(`💡 For security, enter Alice's Etherlink address in Counterparty field`, 'info');
+                }
+                
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🔐 BOB MATCHE SUR ETHERLINK`, 'warning');
                 log(`Amount: ${amount} XTZ`, 'info');
                 log(`HashLock: ${hashlock.substring(0, 18)}...`, 'info');
                 log(`Expiration: ${new Date(expiration * 1000).toLocaleTimeString()} (${timelockMins} mins)`, 'info');
+                if (aliceAddress !== ethers.constants.AddressZero) {
+                    log(`Recipient (Alice): ${aliceAddress.substring(0, 10)}...`, 'info');
+                }
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 log('Sending transaction to Etherlink...', 'warning');
                 
                 const tx = await state.contract.initiateSwap(
-                    ethers.constants.AddressZero, // recipient - No specific recipient for flexibility
+                    aliceAddress, // recipient - Only Alice can claim (or anyone if not set)
                     hashlock, // hashLock
                     expiration,
                     { value: ethers.utils.parseEther(amount) }
