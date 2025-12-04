@@ -636,7 +636,7 @@
                             </div>
                         </div>
                     </label>
-                    <input type="text" placeholder="0x..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
+                    <input type="text" id="counterparty-input" placeholder="0x... or tz1..." class="w-full input-field rounded-lg p-3 text-white font-mono text-sm focus:outline-none">
                 </div>
 
                             <div class="grid grid-cols-2 gap-4">
@@ -770,7 +770,7 @@
             
                     <div class="flex items-center justify-between relative">
                         <!-- Left: Etherlink Contract -->
-                        <a href="https://testnet.explorer.etherlink.com/address/0x79826f6Ab82C24395123f8419E3aFb995d906bAd" target="_blank" class="text-center z-10 group cursor-pointer">
+                        <a href="https://testnet.explorer.etherlink.com/address/0x22CD807FAb2E902E62ECaD7bd97bfDD8fD69ccC4" target="_blank" class="text-center z-10 group cursor-pointer">
                             <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 group-hover:border-green-500/50 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden transition-all group-hover:scale-105">
                                 <div class="absolute inset-0 bg-green-500/10 group-hover:bg-green-500/20 transition"></div>
                                 <i class="fa-brands fa-ethereum text-2xl text-green-400"></i>
@@ -792,7 +792,7 @@
                         </div>
 
                         <!-- Right: Jstz Contract -->
-                        <a href="https://privatenet.dashboard.jstz.info/smart-functions/KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W" target="_blank" class="text-center z-10 group cursor-pointer" title="KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W">
+                        <a href="https://privatenet.dashboard.jstz.info/smart-functions/KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn" target="_blank" class="text-center z-10 group cursor-pointer" title="KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn">
                             <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 group-hover:border-jstz-accent/50 flex items-center justify-center mx-auto mb-2 shadow-lg relative overflow-hidden transition-all group-hover:scale-105">
                                 <div class="absolute inset-0 bg-yellow-500/10 group-hover:bg-yellow-500/20 transition"></div>
                                 <i class="fa-solid fa-layer-group text-2xl text-jstz-accent"></i>
@@ -808,11 +808,11 @@
                     
                     <!-- Contract addresses -->
                     <div class="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 gap-2 text-[9px] font-mono text-gray-500">
-                        <div class="truncate" title="0x79826f6Ab82C24395123f8419E3aFb995d906bAd">
-                            <span class="text-gray-600">ETH:</span> 0x79826...06bAd
+                        <div class="truncate" title="0x22CD807FAb2E902E62ECaD7bd97bfDD8fD69ccC4">
+                            <span class="text-gray-600">ETH:</span> 0x103b4...2Cd7
                         </div>
-                        <div class="truncate text-right" title="KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W">
-                            <span class="text-gray-600">JSTZ:</span> KT1VDy...49ZcE
+                        <div class="truncate text-right" title="KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn">
+                            <span class="text-gray-600">JSTZ:</span> KT18pc...S8Bz
                         </div>
                     </div>
                 </div>
@@ -857,11 +857,11 @@
                 htlcAddress: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0',
                 explorer: null
             },
-            // Etherlink Testnet (Ghostnet) - SHA-256 compatible
+            // Etherlink Testnet (Ghostnet) - SHA-256 compatible - HARDENED v2.0
             128123: {
                 name: 'Etherlink Testnet',
                 rpcUrl: 'https://node.ghostnet.etherlink.com',
-                htlcAddress: '0x79826f6Ab82C24395123f8419E3aFb995d906bAd',
+                htlcAddress: '0x22CD807FAb2E902E62ECaD7bd97bfDD8fD69ccC4',
                 explorer: 'https://testnet.explorer.etherlink.com'
             },
             // Etherlink Mainnet
@@ -899,7 +899,7 @@
                 rpcUrl: 'https://privatenet.jstz.info',
                 network: 'privatenet',
                 functionAddress: 'jstz://htlc/',
-                contractAddress: 'KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W'
+                contractAddress: 'KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn'
             }
         };
 
@@ -986,7 +986,9 @@
             pendingJstzVerifyHashlock: null, // Hashlock pending verification via Jstz wallet
             notifications: [], // Notification list
             jstzSwaps: [], // Swaps on Jstz
-            notificationCheckInterval: null // Interval for checking notifications
+            notificationCheckInterval: null, // Interval for checking notifications
+            counterpartyPollingInterval: null, // Interval for checking counterparty lock
+            pendingSwapChain: null // 'etherlink' or 'jstz' - where Alice initiated
         };
 
         // ============================================
@@ -1386,6 +1388,76 @@
         /**
          * Disconnect wallet and reset UI
          */
+        // Connect Jstz wallet programmatically
+        // allowDualConnection: true to allow both wallets for polling
+        async function connectJstz(allowDualConnection = true) {
+            const btn = document.getElementById('wallet-jstz');
+            const textEl = document.getElementById('wallet-jstz-text');
+            
+            // Already connected?
+            if (state.jstzAddress) {
+                return true;
+            }
+            
+            // Check if other wallet is connected (skip if dual connection allowed)
+            if (state.etherlinkAddress && !allowDualConnection) {
+                log('⚠️ Disconnect Etherlink wallet first', 'warning');
+                return false;
+            }
+            
+            try {
+                if (isJstzExtensionInstalled()) {
+                    log('🔐 Connecting to Jstz wallet extension...', 'warning');
+                    
+                    const addressData = await getJstzAddress();
+                    console.log('[JSTZ] Address response:', addressData);
+                    
+                    // Handle different response formats
+                    if (typeof addressData === 'string') {
+                        state.jstzAddress = addressData;
+                    } else if (addressData && typeof addressData === 'object') {
+                        state.jstzAddress = addressData.address || addressData.accountAddress || addressData.data?.address || JSON.stringify(addressData);
+                    } else {
+                        throw new Error('Invalid address response from wallet');
+                    }
+                    
+                    // Safely create short address
+                    const addr = String(state.jstzAddress);
+                    const shortAddr = addr.length > 10 ? `${addr.substring(0, 6)}...${addr.slice(-3)}` : addr;
+                    if (textEl) textEl.innerText = shortAddr;
+                    if (btn) btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
+                    
+                    log(`Connected to Jstz: ${addr.substring(0, 12)}...`, 'success');
+                    
+                    // Fetch Jstz balance
+                    fetchJstzBalance();
+                    
+                    // If Etherlink is also connected, we're in dual mode (for polling)
+                    if (state.etherlinkAddress) {
+                        log('✅ Dual wallet mode: Both Etherlink & Jstz connected!', 'success');
+                        // Don't change the main connected wallet, just add Jstz for reading
+                    } else {
+                        // Update network badge for Jstz
+                        const networkName = CONFIG.jstz.network === 'privatenet' ? 'Jstz Privatenet' : 'Jstz Sandbox';
+                        updateNetworkBadge(`jstz-${CONFIG.jstz.network}`, networkName);
+                        
+                        // Update UI
+                        updateWalletConnectionUI('jstz');
+                    }
+                    
+                    return true;
+                } else {
+                    log('❌ Jstz wallet extension not detected', 'error');
+                    log('Install from: https://github.com/jstz-dev/dev-wallet/releases', 'info');
+                    return false;
+                }
+            } catch (error) {
+                console.error('[JSTZ] Connection error:', error);
+                log(`❌ Failed to connect Jstz wallet: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
         function disconnectWallet() {
             state.etherlinkAddress = null;
             state.jstzAddress = null;
@@ -1647,16 +1719,18 @@
          *   - forceWallet: Force using wallet even for read operations (default: false)
          */
         async function jstzRequest(method, path, body = null, options = {}) {
-            const { requiresSignature = true, transferAmountMutez = 0, forceWallet = false } = typeof options === 'boolean' 
+            const { requiresSignature = true, transferAmountMutez = 0, forceWallet = false, silent = false } = typeof options === 'boolean' 
                 ? { requiresSignature: options } 
                 : options;
             
             const contractAddress = CONFIG.jstz.contractAddress;
             const rpcUrl = CONFIG.jstz.rpcUrl;
             
-            log(`📤 Jstz: ${method} ${path}`, 'system');
-            if (transferAmountMutez > 0) {
-                log(`💰 Sending ${transferAmountMutez} mutez (${transferAmountMutez / 1000000} XTZ)`, 'warning');
+            if (!silent) {
+                log(`📤 Jstz: ${method} ${path}`, 'system');
+                if (transferAmountMutez > 0) {
+                    log(`💰 Sending ${transferAmountMutez} mutez (${transferAmountMutez / 1000000} XTZ)`, 'warning');
+                }
             }
             
             // For read operations, try without signature first (unless forceWallet is true)
@@ -1682,19 +1756,19 @@
                     // Note: CLI transfer syntax may vary - check jstz docs
                     cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}' --transfer ${transferAmountMutez}`;
                 }
-                log(`⚠️ Jstz wallet extension not detected`, 'warning');
-                log(`📋 Run this CLI command instead:`, 'system');
-                log(`<code class="bg-black/50 px-2 py-1 rounded text-xs break-all">${cliCmd}</code>`, 'info');
                 
-                // Show popup with CLI command
-                showCLIModal(cliCmd, 'Jstz wallet extension not available. Run this command to complete the transaction:');
+                if (!silent) {
+                    log(`⚠️ Jstz wallet extension not detected`, 'warning');
+                    // Show popup only for non-silent requests (important operations)
+                    showCLIModal(cliCmd, 'Jstz wallet extension not available. Run this command to complete the transaction:');
+                }
                 
-                return { cliRequired: true, cliCommand: cliCmd };
+                return { success: false, cliRequired: true, cliCommand: cliCmd };
             }
             
             // Extension available - use it!
             try {
-                log(`🔐 Requesting signature from Jstz wallet...`, 'warning');
+                if (!silent) log(`🔐 Requesting signature from Jstz wallet...`, 'warning');
                 
                 // Build the operation - body must be base64 encoded as per Jstz docs
                 const bodyJson = body ? JSON.stringify(body) : '';
@@ -1737,7 +1811,7 @@
                 // Request signature from extension
                 const signResponse = await requestJstzSignature(operation);
                 
-                log(`✅ Signature received from ${signResponse.accountAddress.substring(0, 10)}...`, 'success');
+                if (!silent) log(`✅ Signature received from ${signResponse.accountAddress.substring(0, 10)}...`, 'success');
                 console.log('[JSTZ] Sign response:', signResponse);
                 
                 // Inject the signed operation using Jstz SDK (as per documentation)
@@ -1768,6 +1842,10 @@
                         console.log('[JSTZ] SDK injection result inner:', inner);
                         console.log('[JSTZ] Operation hash:', hash);
                         
+                        // Check HTTP status code from contract response
+                        const statusCode = inner?.statusCode || 200;
+                        console.log('[JSTZ] Response status code:', statusCode);
+                        
                         // Parse response body (body is base64 encoded)
                         let returnedMessage = 'Success';
                         if (typeof inner === 'object' && inner && 'body' in inner && inner.body) {
@@ -1787,6 +1865,22 @@
                             }
                         } else if (typeof inner === 'string') {
                             returnedMessage = inner;
+                        }
+                        
+                        // Check for contract-level errors (status 400+)
+                        if (statusCode >= 400) {
+                            const errorMsg = returnedMessage?.error || returnedMessage?.message || `Contract error (${statusCode})`;
+                            console.error('[JSTZ] Contract returned error:', errorMsg);
+                            if (!silent) log(`❌ Contract error: ${errorMsg}`, 'error');
+                            return { success: false, error: errorMsg, statusCode, message: returnedMessage };
+                        }
+                        
+                        // Also check for success: false in response body
+                        if (returnedMessage && returnedMessage.success === false) {
+                            const errorMsg = returnedMessage.error || 'Operation failed';
+                            console.error('[JSTZ] Contract returned success: false:', errorMsg);
+                            if (!silent) log(`❌ ${errorMsg}`, 'error');
+                            return { success: false, error: errorMsg, message: returnedMessage };
                         }
                         
                         // Build operation URL for dashboard
@@ -1867,11 +1961,16 @@
                 console.error('[JSTZ] Extension error:', error);
                 log(`❌ Jstz wallet error: ${error.message}`, 'error');
                 
-                // Show CLI modal as fallback
+                // Offer CLI command as fallback (discreet button, not auto-popup)
                 const cliCmd = `jstz run "jstz://${contractAddress}${path}" -n privatenet -m POST -d '${JSON.stringify(body || {})}'`;
                 
-                log(`💡 Use the CLI command popup to complete this operation`, 'warning');
-                showCLIModal(cliCmd, `The Jstz wallet extension failed. Run this command in your terminal to ${path.includes('initiate') ? 'initiate the swap' : path.includes('claim') ? 'claim the swap' : path.includes('refund') ? 'refund the swap' : 'execute the operation'}:`);
+                if (!silent) {
+                    const actionName = path.includes('initiate') ? 'initiate the swap' : path.includes('claim') ? 'claim the swap' : path.includes('refund') ? 'refund the swap' : 'execute the operation';
+                    log(`⚠️ Jstz wallet operation failed`, 'warning');
+                    offerCliCommand(cliCmd, `The Jstz wallet extension failed. Run this command to ${actionName}:`);
+                } else {
+                    console.log('[JSTZ SILENT] Operation failed, CLI available:', cliCmd);
+                }
                 
                 // Return a special object indicating CLI fallback
                 return { 
@@ -1883,42 +1982,380 @@
             }
         }
         
-        // Simulate Jstz response for demo when extension not available
-        function simulateJstzResponse(path, body) {
-            if (path === '/initiate') {
-                return {
-                    success: true,
-                    event: 'SwapInitiated',
-                    data: {
-                        hashlock: body?.hashLock || body?.hashlock,
-                        sender: state.jstzAddress || 'tz1...',
-                        amount: body?.amount,
-                        status: 'OPEN'
-                    },
-                    simulated: true
-                };
-            }
+        // ============================================
+        // COUNTERPARTY POLLING SYSTEM
+        // ============================================
+        
+        // Start polling to check if counterparty has locked funds
+        function startCounterpartyPolling(hashlock, initiatedOn) {
+            // Stop any existing polling
+            stopCounterpartyPolling();
             
-            if (path === '/claim') {
-                return {
-                    success: true,
-                    event: 'SwapClaimed',
-                    data: { hashlock: body?.hashLock || body?.hashlock },
-                    simulated: true
-                };
-            }
+            state.pendingSwapChain = initiatedOn;
+            const targetChain = initiatedOn === 'etherlink' ? 'jstz' : 'etherlink';
             
-            if (path === '/refund') {
-                return {
-                    success: true,
-                    event: 'SwapRefunded',
-                    simulated: true
-                };
-            }
+            log(`👀 Watching for counterparty on ${targetChain}...`, 'system');
             
-            return { found: false, simulated: true };
+            // For Jstz: manual check only (requires wallet signature each time)
+            // For Etherlink: auto-polling (free read)
+            if (targetChain === 'jstz') {
+                // Show manual check button for Jstz
+                showManualCheckButton(hashlock, targetChain, 'counterparty');
+            } else {
+                // Auto-poll for Etherlink
+                checkCounterpartySwap(hashlock, targetChain);
+                state.counterpartyPollingInterval = setInterval(() => {
+                    checkCounterpartySwap(hashlock, targetChain);
+                }, 10000);
+            }
         }
         
+        function stopCounterpartyPolling() {
+            if (state.counterpartyPollingInterval) {
+                clearInterval(state.counterpartyPollingInterval);
+                state.counterpartyPollingInterval = null;
+            }
+        }
+        
+        // Start polling to check if Alice has revealed the secret (for Bob)
+        function startSecretPolling(hashlock, aliceChain) {
+            // Stop any existing polling
+            stopCounterpartyPolling();
+            
+            log(`🔑 Watching for secret revelation...`, 'system');
+            
+            // aliceChain is where Alice initiated - we need to check where Bob locked
+            // If Alice initiated on Etherlink, Bob locked on Jstz - Alice will claim on Jstz (we check Jstz)
+            // If Alice initiated on Jstz, Bob locked on Etherlink - Alice will claim on Etherlink (we check Etherlink)
+            const chainToCheck = aliceChain === 'etherlink' ? 'jstz' : 'etherlink';
+            
+            console.log('[SECRET POLLING] Starting - aliceChain:', aliceChain, 'chainToCheck:', chainToCheck);
+            log(`📡 Monitoring ${chainToCheck.toUpperCase()} for secret...`, 'info');
+            
+            // For Jstz: manual check only (requires wallet signature each time)
+            // For Etherlink: auto-polling (free read)
+            if (chainToCheck === 'jstz') {
+                // Show manual check button for Jstz
+                showManualCheckButton(hashlock, chainToCheck, 'secret');
+            } else {
+                // Auto-poll for Etherlink (free read-only)
+                console.log('[SECRET POLLING] Starting Etherlink auto-poll every 10s');
+                checkSecretRevealed(hashlock, aliceChain);
+                state.counterpartyPollingInterval = setInterval(() => {
+                    console.log('[SECRET POLLING] Polling tick...');
+                    checkSecretRevealed(hashlock, aliceChain);
+                }, 10000);
+            }
+        }
+        
+        // Show a manual "Check Status" button for Jstz (avoids signature spam)
+        function showManualCheckButton(hashlock, chain, checkType) {
+            const btn = document.getElementById('main-action-btn');
+            
+            if (checkType === 'counterparty') {
+                btn.innerHTML = `<span>🔄 Check Jstz for Counterparty</span><i class="fa-solid fa-search"></i>`;
+                btn.className = 'w-full py-4 rounded-xl bg-gradient-to-r from-jstz-accent to-yellow-400 hover:brightness-110 font-bold text-lg text-black shadow-lg shadow-jstz-accent/25 transition-all duration-300 flex items-center justify-center gap-2';
+                btn.disabled = false;
+                btn.onclick = async () => {
+                    btn.disabled = true;
+                    btn.innerHTML = `<span>🔍 Checking...</span><i class="fa-solid fa-spinner fa-spin"></i>`;
+                    await checkCounterpartySwap(hashlock, chain);
+                    // If not found, restore the button
+                    if (btn.innerHTML.includes('Checking')) {
+                        btn.disabled = false;
+                        btn.innerHTML = `<span>🔄 Check Jstz for Counterparty</span><i class="fa-solid fa-search"></i>`;
+                    }
+                };
+                log(`💡 Click the button to check if counterparty locked on Jstz`, 'info');
+            } else if (checkType === 'secret') {
+                btn.innerHTML = `<span>🔄 Check Jstz for Secret</span><i class="fa-solid fa-key"></i>`;
+                btn.className = 'w-full py-4 rounded-xl bg-gradient-to-r from-jstz-accent to-yellow-400 hover:brightness-110 font-bold text-lg text-black shadow-lg shadow-jstz-accent/25 transition-all duration-300 flex items-center justify-center gap-2';
+                btn.disabled = false;
+                btn.onclick = async () => {
+                    btn.disabled = true;
+                    btn.innerHTML = `<span>🔍 Checking...</span><i class="fa-solid fa-spinner fa-spin"></i>`;
+                    // For secret, we need to check where Alice will claim
+                    // aliceChain (passed as chain here) is opposite
+                    const aliceChain = chain === 'jstz' ? 'etherlink' : 'jstz';
+                    await checkSecretRevealed(hashlock, aliceChain);
+                    // If not found, restore the button
+                    if (btn.innerHTML.includes('Checking')) {
+                        btn.disabled = false;
+                        btn.innerHTML = `<span>🔄 Check Jstz for Secret</span><i class="fa-solid fa-key"></i>`;
+                    }
+                };
+                log(`💡 Click the button to check if secret was revealed on Jstz`, 'info');
+            }
+        }
+        
+        async function checkSecretRevealed(hashlock, aliceChain) {
+            const btn = document.getElementById('main-action-btn');
+            
+            try {
+                if (aliceChain === 'etherlink') {
+                    // Alice locked on Etherlink, check if she claimed on Jstz
+                    console.log('[SECRET CHECK] Checking Jstz for claimed swap:', hashlock.substring(0, 20) + '...');
+                    
+                    // User clicked manually, so wallet should be connected
+                    if (!isJstzExtensionInstalled()) {
+                        log(`❌ Jstz wallet extension not detected`, 'error');
+                        return;
+                    }
+                    
+                    log(`🔍 Checking swap status on Jstz...`, 'system');
+                    const result = await jstzRequest('POST', `/swap/${hashlock}`, {}, { forceWallet: true });
+                    console.log('[SECRET POLLING] Jstz result:', result);
+                    
+                    if (!result.success) return;
+                    
+                    // Parse response
+                    let swapData = result.message?.found !== undefined ? result.message : 
+                                   result.message?.swap ? { found: true, swap: result.message.swap } : null;
+                    
+                    if (swapData?.found && swapData?.swap?.status === 'CLAIMED') {
+                        // Secret revealed!
+                        stopCounterpartyPolling();
+                        const swap = swapData.swap;
+                        const secret = swap.revealedSecret;
+                        
+                        if (secret) {
+                            log(`🔑 SECRET REVEALED: ${secret.substring(0, 20)}...`, 'success');
+                            addNotification('success', '🔑 Secret Revealed!', 'Alice claimed - you can now claim on Etherlink!', hashlock, 'etherlink');
+                            
+                            // Store secret
+                            state.secret = secret;
+                            
+                            // Pre-fill redeem form
+                            prefillRedeemForm(hashlock, secret);
+                            
+                            // Transform button
+                            btn.disabled = false;
+                            btn.className = btn.className.replace('bg-gradient-to-r from-ether-green to-green-400', 'bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse');
+                            btn.innerHTML = `<span>🔑 Secret Revealed! Claim on Etherlink!</span><i class="fa-solid fa-gift"></i>`;
+                            btn.onclick = () => {
+                                switchTab('redeem');
+                                log("📋 Claim form pre-filled with revealed secret!", 'success');
+                            };
+                            
+                            updateProgress(4);
+                            
+                            // Show popup notification
+                            showSecretRevealedModal(secret, hashlock, 'etherlink');
+                        }
+                    } else if (swapData?.found && swapData?.swap?.status === 'OPEN') {
+                        // Swap still open, secret not revealed yet
+                        log(`⏳ Swap still OPEN - secret not revealed yet. Try again later.`, 'warning');
+                    } else {
+                        log(`⏳ Swap not found or not claimed yet. Try again later.`, 'warning');
+                    }
+                } else {
+                    // Alice locked on Jstz, check if she claimed on Etherlink (via events)
+                    console.log('[SECRET POLLING] Checking Etherlink for claimed swap:', hashlock.substring(0, 20) + '...');
+                    
+                    // Use Ghostnet config for Etherlink
+                    const networkConfig = NETWORK_CONFIG[128123]; // Etherlink Ghostnet
+                    const rpcUrl = networkConfig?.rpcUrl || 'https://node.ghostnet.etherlink.com';
+                    const htlcAddress = networkConfig?.htlcAddress || CONFIG.etherlink.contractAddress;
+                    
+                    console.log('[SECRET POLLING] Using RPC:', rpcUrl);
+                    console.log('[SECRET POLLING] HTLC address:', htlcAddress);
+                    
+                    const readOnlyProvider = new ethers.providers.JsonRpcProvider(rpcUrl);
+                    const readOnlyContract = new ethers.Contract(htlcAddress, CONFIG.etherlink.abi, readOnlyProvider);
+                    
+                    const swap = await readOnlyContract.getSwap(hashlock);
+                    console.log('[SECRET POLLING] Etherlink swap status:', swap.status, '(0=OPEN, 1=CLAIMED, 2=REFUNDED)');
+                    
+                    if (swap.status === 0) {
+                        // Still OPEN - not claimed yet
+                        log(`⏳ Etherlink swap still OPEN - checking every 10s...`, 'warning');
+                    } else if (swap.status === 1) { // CLAIMED
+                        // Need to get secret from events
+                        console.log('[SECRET POLLING] Swap CLAIMED! Looking for secret in events...');
+                        const filter = readOnlyContract.filters.SwapClaimed(hashlock);
+                        const events = await readOnlyContract.queryFilter(filter);
+                        console.log('[SECRET POLLING] Found', events.length, 'SwapClaimed events');
+                        
+                        if (events.length > 0) {
+                            stopCounterpartyPolling();
+                            const secret = events[0].args.secret;
+                            const secretHex = '0x' + Array.from(secret).map(b => b.toString(16).padStart(2, '0')).join('');
+                            
+                            log(`🔑 SECRET REVEALED: ${secretHex.substring(0, 20)}...`, 'success');
+                            addNotification('success', '🔑 Secret Revealed!', 'Alice claimed - you can now claim on Jstz!', hashlock, 'jstz');
+                            
+                            // Store secret
+                            state.secret = secretHex;
+                            
+                            // Pre-fill redeem form
+                            prefillRedeemForm(hashlock, secretHex);
+                            
+                            // Transform button
+                            btn.disabled = false;
+                            btn.className = btn.className.replace('bg-gradient-to-r from-ether-green to-green-400', 'bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse');
+                            btn.innerHTML = `<span>🔑 Secret Revealed! Claim on Jstz!</span><i class="fa-solid fa-gift"></i>`;
+                            btn.onclick = () => {
+                                switchTab('redeem');
+                                log("📋 Claim form pre-filled with revealed secret!", 'success');
+                            };
+                            
+                            updateProgress(4);
+                            
+                            // Show popup notification
+                            showSecretRevealedModal(secretHex, hashlock, 'jstz');
+                        }
+                    } else if (swap.status === 2) {
+                        // REFUNDED - swap expired
+                        stopCounterpartyPolling();
+                        log(`❌ Swap was REFUNDED (expired) - secret not available`, 'error');
+                    }
+                }
+            } catch (error) {
+                console.log('[SECRET POLLING] Check failed (will retry):', error.message);
+            }
+        }
+        
+        // Show modal when secret is revealed
+        function showSecretRevealedModal(secret, hashlock, claimChain) {
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'secret-revealed-modal';
+            modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900 border border-yellow-500/50 rounded-2xl p-6 max-w-md mx-4 shadow-2xl animate-pulse-once">
+                    <div class="text-center mb-4">
+                        <div class="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
+                            <i class="fa-solid fa-key text-3xl text-yellow-400"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">🔑 Secret Revealed!</h3>
+                        <p class="text-gray-400 text-sm">Alice has claimed her funds. Use this secret to claim yours on ${claimChain === 'etherlink' ? 'Etherlink' : 'Jstz'}!</p>
+                    </div>
+                    
+                    <div class="bg-slate-900/50 rounded-xl p-4 mb-4">
+                        <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Secret (Copy this!)</label>
+                        <div class="flex items-center gap-2">
+                            <code class="text-xs text-yellow-400 font-mono break-all flex-1">${secret}</code>
+                            <button onclick="navigator.clipboard.writeText('${secret}'); this.innerHTML='<i class=\\'fa-solid fa-check\\'></i>'" class="p-2 rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button onclick="document.getElementById('secret-revealed-modal').remove()" class="flex-1 py-3 rounded-xl bg-slate-700 text-white font-semibold hover:bg-slate-600 transition">
+                            Close
+                        </button>
+                        <button onclick="document.getElementById('secret-revealed-modal').remove(); switchTab('redeem');" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-bold hover:opacity-90 transition">
+                            <i class="fa-solid fa-gift mr-2"></i>Claim Now!
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Play notification sound (optional)
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleS8AHpWtu9H8yI0lAC+fwr/Y/OK4TAAV');
+                audio.volume = 0.3;
+                audio.play().catch(() => {});
+            } catch (e) {}
+        }
+        
+        async function checkCounterpartySwap(hashlock, targetChain) {
+            const btn = document.getElementById('main-action-btn');
+            
+            try {
+                if (targetChain === 'jstz') {
+                    // Check if swap exists on Jstz (manual button click)
+                    console.log('[CHECK] Checking Jstz for swap:', hashlock.substring(0, 20) + '...');
+                    
+                    // User clicked manually, wallet should be connected
+                    if (!isJstzExtensionInstalled()) {
+                        log(`❌ Jstz wallet extension not detected`, 'error');
+                        return;
+                    }
+                    
+                    log(`🔍 Checking swap status on Jstz...`, 'system');
+                    const walletResult = await jstzRequest('POST', `/swap/${hashlock}`, {}, { forceWallet: true });
+                    console.log('[POLLING] Jstz result:', walletResult);
+                    
+                    if (!walletResult.success) {
+                        console.log('[POLLING] Jstz request failed');
+                        return;
+                    }
+                    
+                    // Parse the response - could be in message or directly
+                    let swapData = null;
+                    if (walletResult.message?.found !== undefined) {
+                        swapData = walletResult.message;
+                    } else if (typeof walletResult.message === 'object' && walletResult.message?.swap) {
+                        swapData = { found: true, swap: walletResult.message.swap };
+                    }
+                    
+                    if (swapData?.found && swapData?.swap?.status === 'OPEN') {
+                        // Counterparty has locked!
+                        stopCounterpartyPolling();
+                        const swap = swapData.swap;
+                        
+                        log(`🎉 Counterparty locked ${swap.amountXtz} XTZ on Jstz!`, 'success');
+                        addNotification('success', 'Counterparty Locked!', `${swap.amountXtz} XTZ locked on Jstz - Ready to claim!`, hashlock, 'jstz');
+                        
+                        // Transform button to "Claim Now"
+                        btn.disabled = false;
+                        btn.className = btn.className.replace('bg-gradient-to-r from-ether-green to-green-400', 'bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse');
+                        btn.innerHTML = `<span>🎉 Claim ${swap.amountXtz} XTZ on Jstz!</span><i class="fa-solid fa-gift"></i>`;
+                        btn.onclick = () => {
+                            // Switch to Redeem tab and auto-fill
+                            switchTab('redeem');
+                            document.getElementById('swap-id-input').value = hashlock;
+                            document.getElementById('secret-input-claim').value = state.secret;
+                            log("📋 Claim form pre-filled. Click 'Claim Funds' to complete!", 'success');
+                        };
+                        
+                        updateProgress(4);
+                    } else {
+                        // Swap not found yet
+                        log(`⏳ Counterparty hasn't locked yet. Try again later.`, 'warning');
+                    }
+                } else {
+                    // Check if swap exists on Etherlink
+                    const rpcUrl = NETWORK_CONFIG[128123].rpcUrl;
+                    const htlcAddress = NETWORK_CONFIG[128123].htlcAddress;
+                    
+                    const readOnlyProvider = new ethers.providers.JsonRpcProvider(rpcUrl);
+                    const readOnlyContract = new ethers.Contract(htlcAddress, CONFIG.etherlink.abi, readOnlyProvider);
+                    
+                    const swap = await readOnlyContract.getSwap(hashlock);
+                    
+                    if (swap.sender !== ethers.constants.AddressZero && swap.status === 0) {
+                        // Counterparty has locked!
+                        stopCounterpartyPolling();
+                        const amountEth = ethers.utils.formatEther(swap.amount);
+                        
+                        log(`🎉 Counterparty locked ${amountEth} XTZ on Etherlink!`, 'success');
+                        addNotification('success', 'Counterparty Locked!', `${amountEth} XTZ locked on Etherlink - Ready to claim!`, hashlock, 'etherlink');
+                        
+                        // Transform button to "Claim Now"
+                        btn.disabled = false;
+                        btn.className = btn.className.replace('bg-gradient-to-r from-ether-green to-green-400', 'bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse');
+                        btn.innerHTML = `<span>🎉 Claim ${amountEth} XTZ on Etherlink!</span><i class="fa-solid fa-gift"></i>`;
+                        btn.onclick = () => {
+                            // Switch to Redeem tab and auto-fill
+                            switchTab('redeem');
+                            document.getElementById('swap-id-input').value = hashlock;
+                            document.getElementById('secret-input-claim').value = state.secret;
+                            log("📋 Claim form pre-filled. Click 'Claim Funds' to complete!", 'success');
+                        };
+                        
+                        updateProgress(4);
+                    }
+                }
+            } catch (error) {
+                console.log('[POLLING] Check failed (will retry):', error.message);
+                // Silent fail - will retry on next interval
+            }
+        }
 
         // ============================================
         // TOKEN & BALANCE MANAGEMENT
@@ -2297,8 +2734,17 @@
             updateBalanceDisplay();
         }
 
+        // Alias for setTab (used in onClick handlers)
+        function switchTab(mode) {
+            setTab(mode);
+        }
+        
         function setTab(mode) {
             state.mode = mode;
+            
+            // Stop counterparty polling when changing tabs
+            stopCounterpartyPolling();
+            
             const btnCreate = document.getElementById('tab-create');
             const btnJoin = document.getElementById('tab-join');
             const btnRedeem = document.getElementById('tab-redeem');
@@ -2493,7 +2939,7 @@
         async function initiateAsAliceOnEtherlink() {
             const btn = document.getElementById('main-action-btn');
             const amount = document.getElementById('amount-input').value;
-            const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
+            const counterpartyInput = document.getElementById('counterparty-input');
             const timelockInput = document.getElementById('timelock-input');
             const timelockMins = parseInt(timelockInput?.value || 60);
             
@@ -2522,6 +2968,12 @@
                 log("❌ Timelock must be at least 5 minutes for safety", 'error');
                 return;
             }
+            
+            // 5. Validate counterparty address format if provided (must be tz1 for Jstz destination)
+            const counterpartyValue = counterpartyInput?.value?.trim() || '';
+            if (counterpartyValue && !counterpartyValue.startsWith('tz1') && !counterpartyValue.startsWith('tz2') && !counterpartyValue.startsWith('tz3')) {
+                log("⚠️ Note: Counterparty should be a Jstz address (tz1...) for cross-chain swap", 'warning');
+            }
 
             // Connect if not connected
             if (!state.provider) {
@@ -2546,7 +2998,7 @@
             const existingSwap = await verifySwapOnEtherlink(state.hash);
             if (existingSwap.valid && existingSwap.swap) {
                 log(`❌ A swap with this HashLock already exists!`, 'error');
-                log(`State: ${['OPEN', 'CLAIMED', 'EXPIRED'][existingSwap.swap.status]}`, 'info');
+                log(`State: ${['OPEN', 'CLAIMED', 'REFUNDED'][existingSwap.swap.status]}`, 'info');
                 log(`Generate a new secret to create a new swap.`, 'system');
                 btn.disabled = false;
                 btn.innerHTML = `<span>Initiate Swap</span><i class="fa-solid fa-arrow-right"></i>`;
@@ -2574,7 +3026,15 @@
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Initiating Swap...`;
 
             try {
-                const recipient = counterpartyInput?.value || ethers.constants.AddressZero;
+                // For Etherlink, recipient must be 0x address - ignore tz1 addresses
+                let recipient = ethers.constants.AddressZero;
+                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
+                if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length === 42) {
+                    recipient = counterpartyRaw;
+                } else if (counterpartyRaw.startsWith('tz')) {
+                    log(`⚠️ Note: tz1 address ignored for Etherlink - use 0x address or leave empty`, 'warning');
+                }
+                
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
                 
                 log(`Initiating swap on Etherlink...`, 'warning');
@@ -2601,36 +3061,43 @@
                 log(`✅ Swap initiated on Etherlink!`, 'success');
                 logTx(receipt.hash || tx.hash, '✅ Confirmed');
                 log(`SwapId: ${state.currentSwapId.substring(0, 18)}...`, 'info');
-                log(`Funds Locked: ${amount} ETH`, 'success');
+                log(`Funds Locked: ${amount} XTZ`, 'success');
                 
                 updateProgress(2);
                 btn.innerHTML = `<span>Waiting for Bob on Jstz...</span>`;
                 
-                log(``, 'system');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                log(`🎉 SWAP INITIATED SUCCESSFULLY!`, 'success');
-                log(``, 'system');
-                log(`📋 NEXT STEP:`, 'warning');
-                log(`   Share this HASH with your counterparty:`, 'info');
-                log(`   ${state.hash}`, 'system');
-                log(``, 'system');
-                log(`👤 COUNTERPARTY MUST:`, 'info');
-                log(`   1. Connect their Jstz wallet`, 'system');
-                log(`   2. Click "Join" and paste the hash`, 'system');
-                log(`   3. Click "Match Swap" to lock their funds`, 'system');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
-                
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.currentSwapId, state.secret);
-                log("Go to 'Redeem / Refund' tab to claim or refund later", 'system');
                 
-                // Enable claim button after counterparty participates
+                // Show initiate success popup!
+                const explorerUrl = `https://testnet.explorer.etherlink.com/tx/${receipt.hash || tx.hash}`;
+                showSuccessModal({
+                    type: 'initiate',
+                    title: '🔒 Funds Locked!',
+                    subtitle: 'Share the Hash with your counterparty',
+                    amount: amount,
+                    token: 'XTZ',
+                    chain: 'etherlink',
+                    sender: state.etherlinkAddress,
+                    hashlock: state.hash,
+                    txHash: receipt.hash || tx.hash,
+                    explorerUrl: explorerUrl,
+                    extraActions: [{
+                        label: '📋 Copy Hash',
+                        onClick: `navigator.clipboard.writeText('${state.hash}'); log('✅ Hash copied!', 'success')`,
+                        primary: true
+                    }]
+                });
+                
+                // Start polling for counterparty's lock on Jstz
                 setTimeout(() => {
                     log("Ready to claim on Jstz (when counterparty has locked funds)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Waiting for counterparty...</span>`;
-                    // No onClick needed here, user should go to Redeem tab
+                    btn.innerHTML = `<span>👀 Watching for counterparty...</span><i class="fa-solid fa-spinner fa-spin ml-2"></i>`;
                     updateProgress(3);
+                    
+                    // Start automatic polling
+                    startCounterpartyPolling(state.hash, 'etherlink');
                 }, 2000);
 
             } catch (error) {
@@ -2644,7 +3111,7 @@
         async function initiateAsAliceOnJstz() {
             const btn = document.getElementById('main-action-btn');
             const amount = document.getElementById('amount-input').value;
-            const counterpartyInput = document.querySelector('input[placeholder="0x..."]');
+            const counterpartyInput = document.getElementById('counterparty-input');
             const timelockInput = document.getElementById('timelock-input');
             const timelockMins = parseInt(timelockInput?.value || 60);
 
@@ -2667,8 +3134,14 @@
                 log("❌ Timelock must be at least 5 minutes for safety", 'error');
                 return;
             }
+            
+            // 4. Validate counterparty address format if provided (must be 0x for Etherlink destination)
+            const counterpartyValue = counterpartyInput?.value?.trim() || '';
+            if (counterpartyValue && !counterpartyValue.startsWith('0x')) {
+                log("⚠️ Note: Counterparty should be an Etherlink address (0x...) for cross-chain swap", 'warning');
+            }
 
-            // 4. Connect Jstz if not connected
+            // 5. Connect Jstz if not connected
             if (!state.jstzAddress) {
                 log('Connecting to Jstz wallet...', 'warning');
                 const connected = await connectJstz();
@@ -2692,7 +3165,15 @@
 
             try {
                 const expiration = Math.floor(Date.now() / 1000) + (timelockMins * 60);
-                const recipient = counterpartyInput?.value || '';
+                
+                // For Jstz, recipient should be tz1 address - ignore 0x addresses
+                let recipient = '';
+                const counterpartyRaw = counterpartyInput?.value?.trim() || '';
+                if (counterpartyRaw.startsWith('tz')) {
+                    recipient = counterpartyRaw;
+                } else if (counterpartyRaw.startsWith('0x') && counterpartyRaw.length > 2) {
+                    log(`⚠️ Note: 0x address ignored for Jstz - use tz1 address or leave empty`, 'warning');
+                }
                 
                 log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🔐 ALICE INITIE SUR JSTZ`, 'warning');
@@ -2730,41 +3211,51 @@
                     return;
                 }
                 
-                if (!response || response.error) {
-                    throw new Error(response?.error || 'Failed to initiate swap on Jstz');
+                // Check for errors (contract-level or operation-level)
+                if (!response || !response.success || response.error) {
+                    const errorMsg = response?.error || response?.message?.error || 'Failed to initiate swap on Jstz';
+                    throw new Error(errorMsg);
                 }
                 
                 // Store for later
                 state.currentSwapId = state.hash;
                 
-                log(``, 'system');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🎉 SWAP INITIATED SUCCESSFULLY ON JSTZ!`, 'success');
                 log(`💰 Funds locked: ${amount} XTZ`, 'success');
-                log(``, 'system');
-                log(`📋 NEXT STEP:`, 'warning');
-                log(`   Share this HASH with your counterparty:`, 'info');
-                log(`   ${state.hash}`, 'system');
-                log(``, 'system');
-                log(`👤 COUNTERPARTY MUST:`, 'info');
-                log(`   1. Connect with MetaMask (Etherlink)`, 'system');
-                log(`   2. Click "Join" and paste the hash`, 'system');
-                log(`   3. Click "Match Swap" to lock their funds`, 'system');
-                log(``, 'system');
-                log(`⏰ After counterparty locks funds, you can claim on Etherlink!`, 'warning');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 
                 updateProgress(2);
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.currentSwapId, state.secret);
                 
-                btn.innerHTML = `<span>Waiting for counterparty...</span>`;
+                // Show initiate success popup!
+                showSuccessModal({
+                    type: 'initiate',
+                    title: '🔒 Funds Locked!',
+                    subtitle: 'Share the Hash with your counterparty',
+                    amount: amount,
+                    token: 'XTZ',
+                    chain: 'jstz',
+                    sender: state.jstzAddress,
+                    hashlock: state.hash,
+                    txHash: response.operationHash,
+                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`,
+                    extraActions: [{
+                        label: '📋 Copy Hash',
+                        onClick: `navigator.clipboard.writeText('${state.hash}'); log('✅ Hash copied!', 'success')`,
+                        primary: true
+                    }]
+                });
+                
+                btn.innerHTML = `<span>👀 Watching for counterparty...</span><i class="fa-solid fa-spinner fa-spin ml-2"></i>`;
                 
                 setTimeout(() => {
                     log("Ready to claim on Etherlink (when counterparty has locked)", 'system');
                     btn.disabled = false;
                     updateProgress(3);
+                    
+                    // Start automatic polling
+                    startCounterpartyPolling(state.hash, 'jstz');
                 }, 2000);
 
             } catch (error) {
@@ -2903,40 +3394,52 @@
                     return;
                 }
                 
-                if (response && response.error) {
-                    throw new Error(response.error);
+                // Check for errors (contract-level or operation-level)
+                if (!response || !response.success || response.error) {
+                    const errorMsg = response?.error || response?.message?.error || 'Failed to match swap on Jstz';
+                    throw new Error(errorMsg);
                 }
                 
                 state.currentSwapId = hashlock;
                 state.hash = hashlock;
                 
-                log(``, 'system');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🎉 SWAP MATCHED SUCCESSFULLY!`, 'success');
-                log(`💰 Funds locked: ${amount} XTZ`, 'success');
-                log(``, 'system');
-                log(`📋 NEXT STEPS:`, 'warning');
-                log(`   1. Wait for Alice to claim your funds on Jstz`, 'info');
-                log(`   2. When she claims, the SECRET will be revealed`, 'info');
-                log(`   3. Use this secret to claim on Etherlink!`, 'info');
-                log(``, 'system');
-                log(`⏰ IMPORTANT: Claim before Alice's swap expires!`, 'warning');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`💰 Funds locked: ${amount} XTZ on Jstz`, 'success');
                 
                 updateProgress(3);
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.hash, null);
-                log("Go to 'Redeem / Refund' tab when the secret is revealed", 'system');
                 
-                btn.innerHTML = `<span>Waiting for Secret...</span>`;
+                // Show match success popup!
+                showSuccessModal({
+                    type: 'match',
+                    title: '🤝 Swap Matched!',
+                    subtitle: 'Wait for Alice to claim, then use the secret',
+                    amount: amount,
+                    token: 'XTZ',
+                    chain: 'jstz',
+                    sender: state.jstzAddress,
+                    hashlock: hashlock,
+                    txHash: response.operationHash,
+                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`,
+                    extraActions: [{
+                        label: '👀 Watch for Secret',
+                        onClick: `closeSuccessModal()`,
+                        primary: true
+                    }]
+                });
                 
-                // Poll for secret revelation or enable manual claim
+                btn.innerHTML = `<span>🔑 Watching for Secret...</span><i class="fa-solid fa-spinner fa-spin ml-2"></i>`;
+                
+                // Start polling for secret revelation
                 setTimeout(() => {
                     log("Ready to claim on Etherlink (when Alice reveals the secret)", 'system');
                     btn.disabled = false;
-                    btn.innerHTML = `<span>Waiting for Secret...</span>`;
-                    // No onClick needed here, user should go to Redeem tab
+                    
+                    // Alice locked on Etherlink, Bob locked on Jstz
+                    // Watch Jstz for Alice to claim (reveal secret)
+                    startSecretPolling(hashlock, 'etherlink');
                 }, 2000);
 
             } catch (error) {
@@ -3062,30 +3565,44 @@
                 state.currentSwapId = hashlock;
                 state.hash = hashlock;
                 
-                log(``, 'system');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
                 log(`🎉 SWAP MATCHED SUCCESSFULLY ON ETHERLINK!`, 'success');
                 logTx(receipt.hash || tx.hash, '✅ Confirmed');
-                log(`💰 Funds locked: ${amount} XTZ`, 'success');
-                log(``, 'system');
-                log(`📋 NEXT STEPS:`, 'warning');
-                log(`   1. Wait for Alice to claim your funds on Etherlink`, 'info');
-                log(`   2. When she claims, the SECRET will be revealed`, 'info');
-                log(`   3. Use this secret to claim on Jstz!`, 'info');
-                log(``, 'system');
-                log(`⏰ IMPORTANT: Claim before Alice's swap expires!`, 'warning');
-                log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'system');
+                log(`💰 Funds locked: ${amount} XTZ on Etherlink`, 'success');
                 
                 updateProgress(3);
                 
                 // Pre-fill values for redeem tab
                 prefillRedeemForm(state.hash, null);
                 
-                btn.innerHTML = `<span>Waiting for Secret...</span>`;
+                // Show match success popup!
+                const explorerUrl = `https://testnet.explorer.etherlink.com/tx/${receipt.hash || tx.hash}`;
+                showSuccessModal({
+                    type: 'match',
+                    title: '🤝 Swap Matched!',
+                    subtitle: 'Wait for Alice to claim, then use the secret',
+                    amount: amount,
+                    token: 'XTZ',
+                    chain: 'etherlink',
+                    sender: state.etherlinkAddress,
+                    hashlock: hashlock,
+                    txHash: receipt.hash || tx.hash,
+                    explorerUrl: explorerUrl,
+                    extraActions: [{
+                        label: '👀 Watch for Secret',
+                        onClick: `closeSuccessModal()`,
+                        primary: true
+                    }]
+                });
+                
+                btn.innerHTML = `<span>🔑 Watching for Secret...</span><i class="fa-solid fa-spinner fa-spin ml-2"></i>`;
                 
                 setTimeout(() => {
                     log("Ready to claim on Jstz (when Alice reveals the secret)", 'system');
                     btn.disabled = false;
+                    
+                    // Alice locked on Jstz, Bob locked on Etherlink
+                    // Watch Etherlink for Alice to claim (reveal secret)
+                    startSecretPolling(hashlock, 'jstz');
                 }, 2000);
 
             } catch (error) {
@@ -3191,19 +3708,43 @@
                     return;
                 }
                 
-                if (response && response.error) {
-                    throw new Error(response.error);
+                // Check for errors (contract-level or operation-level)
+                if (!response.success || response.error) {
+                    const errorMsg = response.error || response.message?.error || 'Claim failed';
+                    throw new Error(errorMsg);
                 }
+                
+                // Extract amount from response if available
+                const claimData = response?.message?.data || response?.message || {};
+                const claimedAmount = claimData.amount || claimData.amountXtz || '?';
+                const claimerAddress = state.jstzAddress || 'unknown';
+                const truncatedAddress = claimerAddress.length > 10 
+                    ? `${claimerAddress.substring(0, 8)}...${claimerAddress.slice(-4)}`
+                    : claimerAddress;
                 
                 log(`✅ Claimed on Jstz!`, 'success');
                 log(`Secret revealed: ${secret.substring(0, 18)}...`, 'system');
-                log(`Alice has received XTZ!`, 'success');
+                log(`💰 ${truncatedAddress} received ${claimedAmount} XTZ`, 'success');
                 
                 updateProgress(4);
                 
                 btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
                 btn.classList.add('bg-ether-green', 'text-black');
                 btn.disabled = true;
+                
+                // Show celebration popup!
+                showSuccessModal({
+                    type: 'claim',
+                    title: '🎉 Funds Claimed!',
+                    subtitle: 'Your atomic swap is complete',
+                    amount: claimedAmount,
+                    token: 'XTZ',
+                    chain: 'jstz',
+                    recipient: claimerAddress,
+                    hashlock: hashLock,
+                    txHash: response.operationHash,
+                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`
+                });
 
             } catch (error) {
                 log(`Error: ${error.message}`, 'error');
@@ -3217,11 +3758,11 @@
         // ============================================
         
         // Swap states enum (matching Solidity contract)
-        // Must match Solidity enum: enum SwapStatus { OPEN, CLAIMED, EXPIRED }
+        // Must match Solidity enum: enum SwapStatus { OPEN, CLAIMED, REFUNDED }
         const SwapState = {
             OPEN: 0,       // Swap is active, funds locked
             CLAIMED: 1,    // Swap was claimed
-            EXPIRED: 2     // Swap was refunded/expired
+            REFUNDED: 2    // Swap was refunded after expiration
         };
         
         // Verify swap exists and is in correct state on Etherlink
@@ -3265,9 +3806,9 @@
                     };
                 }
                 
-                // Check status if expected state provided (OPEN=0, CLAIMED=1, EXPIRED=2)
+                // Check status if expected state provided (OPEN=0, CLAIMED=1, REFUNDED=2)
                 if (expectedState !== null && swap.status !== expectedState) {
-                    const stateNames = ['OPEN', 'CLAIMED', 'EXPIRED'];
+                    const stateNames = ['OPEN', 'CLAIMED', 'REFUNDED'];
                     return {
                         valid: false,
                         error: `Swap is ${stateNames[swap.status]}, expected ${stateNames[expectedState]}`,
@@ -3419,12 +3960,18 @@
             const verifyJstzBtn = document.getElementById('verify-jstz-btn');
             const aliceDetails = document.getElementById('alice-swap-details');
             const actionBtn = document.getElementById('main-action-btn');
-            const hashLock = state.pendingJstzVerifyHashlock;
             
-            if (!hashLock) {
-                log("❌ No hashlock to verify", 'error');
+            // Always read from input field (not state) to get the latest hashlock
+            const hashInput = document.getElementById('hash-input');
+            const hashLock = hashInput.value.trim();
+            
+            if (!hashLock || !isValidHashLock(hashLock)) {
+                log("❌ Please enter a valid HashLock (0x followed by 64 hex characters)", 'error');
                 return;
             }
+            
+            // Update state with latest hashlock
+            state.pendingJstzVerifyHashlock = hashLock;
             
             verifyJstzBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Connecting...`;
             verifyJstzBtn.disabled = true;
@@ -3705,7 +4252,7 @@
                 
                 document.getElementById('alice-swap-sender').textContent = swap.sender;
                 document.getElementById('alice-swap-chain').textContent = chain;
-                document.getElementById('alice-swap-status').textContent = ['OPEN', 'CLAIMED', 'EXPIRED'][swap.status];
+                document.getElementById('alice-swap-status').textContent = ['OPEN', 'CLAIMED', 'REFUNDED'][swap.status];
                 
                 if (swap.status === 0 && remaining > 0) {
                     // Valid and open - enable Match Swap
@@ -3726,7 +4273,7 @@
                     log(`⚙️ Auto-set your timelock to ${suggestedTimelock} minutes`, 'system');
                     
                 } else {
-                    log(`❌ Cannot match: swap is ${['OPEN', 'CLAIMED', 'EXPIRED'][swap.status]}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
+                    log(`❌ Cannot match: swap is ${['OPEN', 'CLAIMED', 'REFUNDED'][swap.status]}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
                     actionBtn.disabled = true;
                 }
                 
@@ -4006,9 +4553,15 @@
         async function loadJstzSwaps() {
             if (!state.jstzAddress) return [];
             
+            // Skip if wallet extension not available (don't show modal)
+            if (!isJstzExtensionInstalled()) {
+                console.log('[JSTZ SWAPS] Extension not available, skipping');
+                return [];
+            }
+            
             try {
-                // Call the /swaps endpoint to get all swaps
-                const result = await jstzRequest('POST', '/swaps', {}, { forceWallet: true });
+                // Call the /swaps endpoint to get all swaps (silent to avoid popup spam)
+                const result = await jstzRequest('POST', '/swaps', {}, { forceWallet: true, silent: true });
                 
                 console.log('[JSTZ SWAPS] Result:', result);
                 
@@ -4041,10 +4594,12 @@
                     
                     // Filter swaps for current user
                     const userAddress = state.jstzAddress.toLowerCase();
-                    const userSwaps = swapsArray.filter(s => 
-                        s.sender?.toLowerCase() === userAddress || 
-                        s.recipient?.toLowerCase() === userAddress
-                    );
+                    
+                    const userSwaps = swapsArray.filter(s => {
+                        const isUserSwap = s.sender?.toLowerCase() === userAddress || 
+                                          s.recipient?.toLowerCase() === userAddress;
+                        return isUserSwap;
+                    });
                     
                     console.log('[JSTZ SWAPS] User swaps:', userSwaps.length);
                     
@@ -4238,9 +4793,23 @@
                     ` : ''}
                     
                     ${swap.revealedSecret ? `
-                    <div class="mt-2 p-2 rounded-lg bg-green-500/10 border border-green-500/30">
-                        <div class="text-[10px] text-green-400 font-bold mb-1"><i class="fa-solid fa-key mr-1"></i>Secret Revealed!</div>
-                        <code class="text-xs text-green-300 font-mono break-all">${swap.revealedSecret}</code>
+                    <div class="mt-3 p-3 rounded-xl bg-gradient-to-r from-green-500/20 to-emerald-500/10 border border-green-500/40 ${swap.status === 0 ? 'animate-pulse-slow' : ''}">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-green-400 font-bold uppercase tracking-wider">
+                                <i class="fa-solid fa-key mr-1"></i>${swap.status === 1 ? 'Secret Used' : 'Secret Available!'}
+                            </span>
+                            <button onclick="copySecret('${swap.revealedSecret}')" class="text-xs px-2 py-1 rounded bg-green-500/20 hover:bg-green-500/30 text-green-300 transition">
+                                <i class="fa-regular fa-copy mr-1"></i>Copy
+                            </button>
+                        </div>
+                        <code class="text-xs text-green-200 font-mono break-all block ${swap.status === 0 ? 'mb-3' : ''} bg-black/30 p-2 rounded">${swap.revealedSecret}</code>
+                        ${swap.status === 0 ? `
+                        <button onclick="claimWithSecret('${swap.swapId}', '${swap.revealedSecret}', '${swap.chain === 'jstz' ? 'etherlink' : 'jstz'}')" 
+                            class="w-full py-2 rounded-lg text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white shadow-lg shadow-green-500/30 transition flex items-center justify-center gap-2 mt-3">
+                            <i class="fa-solid fa-gift"></i>
+                            Claim on ${swap.chain === 'jstz' ? 'Etherlink' : 'Jstz'} Now!
+                        </button>
+                        ` : ''}
                     </div>
                     ` : ''}
                 </div>
@@ -4475,7 +5044,7 @@
         function openConfirmModal() {
             const modal = document.getElementById('confirm-modal');
             const content = document.getElementById('confirm-modal-content');
-            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
             // Small delay for transition
             setTimeout(() => {
                 modal.classList.remove('opacity-0');
@@ -4492,7 +5061,7 @@
             content.classList.add('scale-95');
             
             setTimeout(() => {
-                modal.classList.add('hidden');
+                modal.style.display = 'none';
             }, 300);
         }
 
@@ -4642,6 +5211,21 @@
                 // hideClaimRefundSection(); // No longer needed in redeem tab
                 updateProgress(1);
                 
+                // Show success popup!
+                const explorerUrl = `https://testnet.explorer.etherlink.com/tx/${tx.hash}`;
+                showSuccessModal({
+                    type: 'refund',
+                    title: '💸 Funds Refunded!',
+                    subtitle: 'Your locked funds have been returned',
+                    amount: swap.amount,
+                    token: 'XTZ',
+                    chain: 'etherlink',
+                    recipient: state.etherlinkAddress,
+                    hashlock: swapId,
+                    txHash: tx.hash,
+                    explorerUrl: explorerUrl
+                });
+                
             } catch (error) {
                 let errorMsg = error.message;
                 if (error.message.includes('NotYetExpired') || error.message.includes('not yet expired')) {
@@ -4695,22 +5279,35 @@
                     return;
                 }
                 
-                if (response && response.error) {
-                    throw new Error(response.error);
+                // Check for errors (contract-level or operation-level)
+                if (!response.success || response.error) {
+                    const errorMsg = response.error || response.message?.error || 'Refund failed';
+                    throw new Error(errorMsg);
                 }
                 
                 log('✅ Refund successful on Jstz!', 'success');
                 
                 // Parse response to get amount if available
-                if (response.message && response.message.data) {
-                    const amount = response.message.data.amount || 'Unknown';
-                    log(`${amount} XTZ returned to your wallet`, 'success');
-                } else {
-                    log('Funds returned to your wallet', 'success');
-                }
+                const refundData = response.message?.data || {};
+                const refundAmount = refundData.amount || refundData.amountXtz || 'Unknown';
+                log(`${refundAmount} XTZ returned to your wallet`, 'success');
                 
                 addNotification('success', 'Refund Complete', 'Jstz refund successful', hashLock, 'jstz');
                 updateProgress(1);
+                
+                // Show success popup!
+                showSuccessModal({
+                    type: 'refund',
+                    title: '💸 Funds Refunded!',
+                    subtitle: 'Your locked funds have been returned',
+                    amount: refundAmount,
+                    token: 'XTZ',
+                    chain: 'jstz',
+                    recipient: state.jstzAddress,
+                    hashlock: hashLock,
+                    txHash: response.operationHash,
+                    explorerUrl: `https://privatenet.dashboard.jstz.info/smart-functions/${CONFIG.jstz.contractAddress}`
+                });
                 
                 // Reload swaps
                 setTimeout(() => loadMySwaps(), 2000);
@@ -4822,15 +5419,35 @@
                     throw new Error('Transaction failed on-chain');
                 }
                 
+                const claimerAddr = state.etherlinkAddress || 'unknown';
+                const truncatedClaimer = claimerAddr.length > 10 
+                    ? `${claimerAddr.substring(0, 8)}...${claimerAddr.slice(-4)}`
+                    : claimerAddr;
+                
                 log(`✅ Claimed on Etherlink!`, 'success');
                 logTx(tx.hash, '✅ Claim confirmed');
-                log(`Successfully received ${swap.amount} XTZ!`, 'success');
+                log(`💰 ${truncatedClaimer} received ${swap.amount} XTZ`, 'success');
                 
                 updateProgress(4);
                 
                 btn.innerHTML = `<i class="fa-solid fa-check-circle"></i> Swap Complete`;
                 btn.classList.add('bg-green-500');
                 btn.disabled = true;
+                
+                // Show celebration popup!
+                const explorerUrl = `https://testnet.explorer.etherlink.com/tx/${tx.hash}`;
+                showSuccessModal({
+                    type: 'claim',
+                    title: '🎉 Funds Claimed!',
+                    subtitle: 'Your atomic swap is complete',
+                    amount: swap.amount,
+                    token: 'XTZ',
+                    chain: 'etherlink',
+                    recipient: claimerAddr,
+                    hashlock: swapId,
+                    txHash: tx.hash,
+                    explorerUrl: explorerUrl
+                });
 
             } catch (error) {
                 // Parse contract revert reasons
@@ -4895,8 +5512,27 @@
             await claimOnJstz();
         }
 
-        async function claimWithSecret() {
-            await claimOnEtherlink();
+        async function claimWithSecret(swapId, secret, targetChain) {
+            // Pre-fill the redeem form and switch to it
+            document.getElementById('swap-id-input').value = swapId;
+            document.getElementById('secret-input-claim').value = secret;
+            
+            // Store in state
+            state.currentSwapId = swapId;
+            state.secret = secret;
+            
+            // Switch to redeem tab
+            switchTab('redeem');
+            
+            log(`📋 Claim form pre-filled with secret!`, 'success');
+            log(`🎯 Target chain: ${targetChain}`, 'info');
+            log(`Click "Claim Funds" to complete the swap`, 'warning');
+        }
+        
+        function copySecret(secret) {
+            navigator.clipboard.writeText(secret).then(() => {
+                log('✅ Secret copied to clipboard!', 'success');
+            });
         }
 
         function copyToClipboard(id) {
@@ -4953,10 +5589,10 @@
                 return;
             }
             
-            // Check if other wallet is connected
+            // Allow dual connection for polling functionality
+            // (Etherlink for transactions, Jstz for reading swap data)
             if (state.jstzAddress) {
-                log('⚠️ Disconnect Jstz wallet first', 'warning');
-                return;
+                log('ℹ️ Jstz already connected - enabling dual wallet mode', 'info');
             }
             
             textEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Connecting...`;
@@ -4995,16 +5631,15 @@
                 state.jstzAddress = null;
                 textEl.innerText = 'Connect Jstz';
                 btn.classList.remove('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
-                updateWalletConnectionUI(null);
+                if (!state.etherlinkAddress) {
+                    updateWalletConnectionUI(null);
+                }
                 log('Jstz wallet disconnected', 'info');
                 return;
             }
             
-            // Check if other wallet is connected
-            if (state.etherlinkAddress) {
-                log('⚠️ Disconnect Etherlink wallet first', 'warning');
-                return;
-            }
+            // Allow dual connection for polling functionality
+            // (Etherlink for transactions, Jstz for reading swap data)
             
             // Jstz connection - try extension first, fallback to simulated
             try {
@@ -5041,41 +5676,17 @@
                     // Fetch Jstz balance
                     await fetchJstzBalance();
                 } else {
-                    // No extension - use simulated mode
-                    state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
-                    textEl.innerText = 'tz1...FTP (demo)';
-                    btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
-                    
-                    updateWalletConnectionUI('jstz');
-                    
-                    log(`⚠️ Jstz wallet extension not found`, 'warning');
-                    log(`Using demo mode - CLI commands will be shown`, 'system');
-                    log(`Install wallet: <a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-ether-green hover:underline">github.com/jstz-dev/dev-wallet</a>`, 'info');
-                    
-                    // Update network badge for Jstz
-                    const jstzNetwork = CONFIG.jstz.network || 'privatenet';
-                    updateNetworkBadge(`jstz-${jstzNetwork}`, `Jstz ${jstzNetwork.charAt(0).toUpperCase() + jstzNetwork.slice(1)} (demo)`);
-                    
-                    // Try to fetch balance anyway
-                    await fetchJstzBalance();
+                    // No extension - show error and install link
+                    log(`❌ Jstz wallet extension not found`, 'error');
+                    log(`📥 Install the Jstz wallet extension to continue:`, 'warning');
+                    log(`<a href="https://github.com/jstz-dev/dev-wallet/releases" target="_blank" class="text-jstz-accent hover:underline font-bold">👉 Download Jstz Wallet Extension</a>`, 'info');
+                    textEl.innerText = 'Connect Jstz';
                 }
             } catch (error) {
                 console.error('[JSTZ] Connection error:', error);
                 log(`❌ Jstz connection error: ${error.message}`, 'error');
-                
-                // Fallback to demo mode
-                state.jstzAddress = 'tz1gyq6Er4ntjHFaXsVbUKnSEqvEiez4HFTP';
-                textEl.innerText = 'tz1...FTP (demo)';
-                btn.classList.add('border-jstz-accent', 'text-jstz-accent', 'bg-jstz-accent/10');
-                updateWalletConnectionUI('jstz');
-                log('Falling back to demo mode', 'system');
-                
-                // Update network badge for Jstz
-                const jstzNetwork = CONFIG.jstz.network || 'privatenet';
-                updateNetworkBadge(`jstz-${jstzNetwork}`, `Jstz ${jstzNetwork.charAt(0).toUpperCase() + jstzNetwork.slice(1)} (demo)`);
-                
-                // Try to fetch balance
-                await fetchJstzBalance();
+                log(`📥 Make sure the Jstz wallet extension is installed and unlocked`, 'warning');
+                textEl.innerText = 'Connect Jstz';
             }
         });
 
@@ -5116,7 +5727,7 @@
 
     </script>
     <!-- Notification Modal -->
-    <div id="confirm-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="confirm-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 items-center justify-center opacity-0 transition-opacity duration-300" style="display: none;">
         <div class="bg-[#111111] border border-white/10 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-300" id="confirm-modal-content">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -5137,8 +5748,101 @@
         </div>
     </div>
     
+    <!-- Success Celebration Modal -->
+    <div id="success-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 items-center justify-center" style="display: none;">
+        <div id="success-modal-content" class="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-green-500/30 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl shadow-green-500/20 transform scale-95 transition-all duration-500">
+            <!-- Animated particles background -->
+            <div class="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+                <div class="particle particle-1"></div>
+                <div class="particle particle-2"></div>
+                <div class="particle particle-3"></div>
+                <div class="particle particle-4"></div>
+                <div class="particle particle-5"></div>
+                <div class="particle particle-6"></div>
+            </div>
+            
+            <!-- Content -->
+            <div class="relative z-10">
+                <!-- Icon -->
+                <div id="success-modal-icon" class="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/50 animate-bounce-once">
+                    <i class="fa-solid fa-check text-4xl text-white"></i>
+                </div>
+                
+                <!-- Title -->
+                <h2 id="success-modal-title" class="text-2xl font-bold text-center text-white mb-2">Success!</h2>
+                
+                <!-- Subtitle -->
+                <p id="success-modal-subtitle" class="text-center text-gray-400 mb-6">Your transaction was successful</p>
+                
+                <!-- Details Card -->
+                <div id="success-modal-details" class="bg-black/30 rounded-2xl p-4 mb-6 border border-white/5">
+                    <!-- Dynamic content inserted here -->
+                </div>
+                
+                <!-- Action Buttons -->
+                <div id="success-modal-actions" class="flex gap-3">
+                    <button onclick="closeSuccessModal()" class="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold transition-all border border-white/10">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        /* Success Modal Animations */
+        @keyframes bounce-once {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .animate-bounce-once {
+            animation: bounce-once 0.5s ease-out;
+        }
+        
+        @keyframes float-up {
+            0% { transform: translateY(100px) scale(0); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateY(-100px) scale(1); opacity: 0; }
+        }
+        
+        .particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: float-up 2s ease-out infinite;
+        }
+        .particle-1 { background: #22c55e; left: 10%; animation-delay: 0s; }
+        .particle-2 { background: #facc15; left: 25%; animation-delay: 0.3s; }
+        .particle-3 { background: #3b82f6; left: 40%; animation-delay: 0.6s; }
+        .particle-4 { background: #22c55e; left: 55%; animation-delay: 0.2s; }
+        .particle-5 { background: #facc15; left: 70%; animation-delay: 0.5s; }
+        .particle-6 { background: #3b82f6; left: 85%; animation-delay: 0.8s; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.6); }
+        }
+        .glow-green {
+            animation: glow-pulse 2s ease-in-out infinite;
+        }
+        .glow-yellow {
+            animation: glow-pulse 2s ease-in-out infinite;
+            --tw-shadow-color: rgba(250, 204, 21, 0.3);
+        }
+    </style>
+    
     <!-- CLI Command Modal -->
-    <div id="cli-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+    <div id="cli-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 items-center justify-center" style="display: none;">
         <div class="bg-[#0a0a0a] border border-jstz-accent/30 rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl shadow-jstz-accent/10">
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
@@ -5214,6 +5918,8 @@
     
     <script>
         // CLI Modal functions
+        let pendingCliCommand = null;
+        
         function showCLIModal(command, description = null) {
             const modal = document.getElementById('cli-modal');
             const commandEl = document.getElementById('cli-modal-command');
@@ -5224,15 +5930,23 @@
                 descEl.textContent = description;
             }
             
-            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
             modal.style.opacity = '0';
             setTimeout(() => modal.style.opacity = '1', 10);
+        }
+        
+        // Show a discreet button instead of auto-popup
+        function offerCliCommand(command, description = null) {
+            pendingCliCommand = command;
+            
+            // Log a clickable link instead of auto-showing modal
+            log(`<button onclick="showCLIModal('${command.replace(/'/g, "\\'")}', '${(description || 'Run this command in your terminal:').replace(/'/g, "\\'")}'); return false;" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-jstz-accent/20 hover:bg-jstz-accent/30 text-jstz-accent text-xs font-semibold transition"><i class="fa-solid fa-terminal"></i> Show CLI Command</button>`, 'info');
         }
         
         function closeCLIModal() {
             const modal = document.getElementById('cli-modal');
             modal.style.opacity = '0';
-            setTimeout(() => modal.classList.add('hidden'), 300);
+            setTimeout(() => modal.style.display = 'none', 300);
         }
         
         function copyCLICommand() {
@@ -5243,6 +5957,197 @@
                 btnText.textContent = 'Copied!';
                 setTimeout(() => btnText.textContent = 'Copy', 2000);
             });
+        }
+        
+        // ========================================
+        // SUCCESS CELEBRATION MODAL
+        // ========================================
+        
+        function showSuccessModal(config) {
+            const {
+                type = 'success', // 'claim', 'refund', 'initiate', 'match', 'success'
+                title = 'Success!',
+                subtitle = 'Your transaction was successful',
+                amount = null,
+                token = 'XTZ',
+                chain = 'etherlink',
+                txHash = null,
+                hashlock = null,
+                recipient = null,
+                sender = null,
+                explorerUrl = null,
+                extraActions = [] // [{label, onClick, primary}]
+            } = config;
+            
+            const modal = document.getElementById('success-modal');
+            const content = document.getElementById('success-modal-content');
+            const iconEl = document.getElementById('success-modal-icon');
+            const titleEl = document.getElementById('success-modal-title');
+            const subtitleEl = document.getElementById('success-modal-subtitle');
+            const detailsEl = document.getElementById('success-modal-details');
+            const actionsEl = document.getElementById('success-modal-actions');
+            
+            // Configure icon based on type
+            const icons = {
+                claim: { icon: 'fa-gift', gradient: 'from-yellow-400 to-orange-500', shadow: 'shadow-yellow-500/50' },
+                refund: { icon: 'fa-rotate-left', gradient: 'from-blue-400 to-cyan-500', shadow: 'shadow-blue-500/50' },
+                initiate: { icon: 'fa-lock', gradient: 'from-purple-400 to-pink-500', shadow: 'shadow-purple-500/50' },
+                match: { icon: 'fa-handshake', gradient: 'from-green-400 to-emerald-500', shadow: 'shadow-green-500/50' },
+                success: { icon: 'fa-check', gradient: 'from-green-400 to-emerald-600', shadow: 'shadow-green-500/50' }
+            };
+            
+            const iconConfig = icons[type] || icons.success;
+            iconEl.className = `w-20 h-20 rounded-full bg-gradient-to-br ${iconConfig.gradient} flex items-center justify-center mx-auto mb-6 shadow-lg ${iconConfig.shadow} animate-bounce-once`;
+            iconEl.innerHTML = `<i class="fa-solid ${iconConfig.icon} text-4xl text-white"></i>`;
+            
+            // Update border color
+            content.className = content.className.replace(/border-\w+-500\/30/g, '');
+            const borderColors = {
+                claim: 'border-yellow-500/30',
+                refund: 'border-blue-500/30',
+                initiate: 'border-purple-500/30',
+                match: 'border-green-500/30',
+                success: 'border-green-500/30'
+            };
+            content.classList.add(borderColors[type] || borderColors.success);
+            
+            // Set title and subtitle
+            titleEl.textContent = title;
+            subtitleEl.textContent = subtitle;
+            
+            // Build details HTML
+            let detailsHtml = '<div class="space-y-3">';
+            
+            if (amount) {
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Amount</span>
+                        <span class="text-white font-bold text-lg">${amount} ${token}</span>
+                    </div>
+                `;
+            }
+            
+            if (chain) {
+                const chainConfig = {
+                    etherlink: { name: 'Etherlink', icon: '⟠', color: 'text-ether-green' },
+                    jstz: { name: 'Jstz', icon: '🟡', color: 'text-jstz-accent' }
+                };
+                const c = chainConfig[chain] || { name: chain, icon: '🔗', color: 'text-white' };
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Network</span>
+                        <span class="${c.color} font-semibold">${c.icon} ${c.name}</span>
+                    </div>
+                `;
+            }
+            
+            if (recipient) {
+                const shortRecipient = recipient.length > 16 ? `${recipient.substring(0, 8)}...${recipient.slice(-6)}` : recipient;
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Recipient</span>
+                        <span class="text-white font-mono text-sm">${shortRecipient}</span>
+                    </div>
+                `;
+            }
+            
+            if (sender) {
+                const shortSender = sender.length > 16 ? `${sender.substring(0, 8)}...${sender.slice(-6)}` : sender;
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Sender</span>
+                        <span class="text-white font-mono text-sm">${shortSender}</span>
+                    </div>
+                `;
+            }
+            
+            if (hashlock) {
+                const shortHash = hashlock.length > 20 ? `${hashlock.substring(0, 10)}...${hashlock.slice(-8)}` : hashlock;
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Swap ID</span>
+                        <span class="text-white font-mono text-xs bg-black/30 px-2 py-1 rounded">${shortHash}</span>
+                    </div>
+                `;
+            }
+            
+            if (txHash) {
+                const shortTx = txHash.length > 20 ? `${txHash.substring(0, 10)}...${txHash.slice(-8)}` : txHash;
+                detailsHtml += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400 text-sm">Tx Hash</span>
+                        <span class="text-white font-mono text-xs bg-black/30 px-2 py-1 rounded">${shortTx}</span>
+                    </div>
+                `;
+            }
+            
+            detailsHtml += '</div>';
+            
+            // Add explorer link if available
+            if (explorerUrl) {
+                detailsHtml += `
+                    <a href="${explorerUrl}" target="_blank" class="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-white transition py-2 border-t border-white/5">
+                        <i class="fa-solid fa-external-link"></i>
+                        View on Explorer
+                    </a>
+                `;
+            }
+            
+            detailsEl.innerHTML = detailsHtml;
+            
+            // Build action buttons
+            let actionsHtml = `
+                <button onclick="closeSuccessModal()" class="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold transition-all border border-white/10">
+                    Close
+                </button>
+            `;
+            
+            extraActions.forEach(action => {
+                if (action.primary) {
+                    actionsHtml += `
+                        <button onclick="${action.onClick}; closeSuccessModal();" class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r ${iconConfig.gradient} text-white font-bold shadow-lg transition-all hover:opacity-90">
+                            ${action.label}
+                        </button>
+                    `;
+                } else {
+                    actionsHtml += `
+                        <button onclick="${action.onClick}" class="flex-1 py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold transition-all">
+                            ${action.label}
+                        </button>
+                    `;
+                }
+            });
+            
+            actionsEl.innerHTML = actionsHtml;
+            
+            // Show modal with animation
+            modal.style.display = 'flex';
+            modal.style.opacity = '0';
+            content.style.transform = 'scale(0.9)';
+            
+            setTimeout(() => {
+                modal.style.opacity = '1';
+                content.style.transform = 'scale(1)';
+            }, 10);
+            
+            // Play celebration sound
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdX6IkJGNhXx2cWxqaWxwdXuBho2TmJygnpyZlZGNiYaBfXp4d3Z2dnh6fICEiIyQk5aYmpubnJybnJubmpmYl5aVlJOSkZCPjo2Mi4qJiIeHh4eHh4iIiYqLjI2Oj5CRkpOUlZaXl5iZmZqam5ubnJycnJycnJycnJycm5ubm5qampmZmJiXl5aWlZWUlJOTkpKRkZCQj4+OjY2MjIuLioqJiYiIh4eGhoWFhYWEhISEhISEhIODg4OCgoKCgoKBgYGBgYCAgICAgH9/f39/f39/fn5+fn5+fn5+fn5+fn5+fn5+fn5+');
+                audio.volume = 0.3;
+                audio.play().catch(() => {});
+            } catch (e) {}
+        }
+        
+        function closeSuccessModal() {
+            const modal = document.getElementById('success-modal');
+            const content = document.getElementById('success-modal-content');
+            
+            modal.style.opacity = '0';
+            content.style.transform = 'scale(0.9)';
+            
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
         }
     </script>
 </body>

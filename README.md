@@ -13,8 +13,8 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 
 | Network | Contract | Address |
 |---------|----------|---------|
-| **Etherlink Testnet** | HTLC Solidity | `0x79826f6Ab82C24395123f8419E3aFb995d906bAd` |
-| **Jstz Privatenet** | HTLC Smart Function | `KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W` |
+| **Etherlink Testnet** | HTLC Solidity v2.0 | `0x22CD807FAb2E902E62ECaD7bd97bfDD8fD69ccC4` |
+| **Jstz Privatenet** | HTLC Smart Function v2.0 | `KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn` |
 
 ---
 
@@ -80,7 +80,7 @@ jstz network add privatenet \
 
 **Verify it works:**
 ```bash
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/" -n privatenet -m POST -d '{}'
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/" -n privatenet -m POST -d '{}'
 ```
 
 Should output something like: `{"status":"healthy","swaps_count":...}`
@@ -158,7 +158,7 @@ HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 EXPIRATION=$(($(date +%s) + 1800))
 
 # Lock 10 XTZ with the same hash
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/initiate" \
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/initiate" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"recipient\":null,\"expiration\":$EXPIRATION,\"amount\":\"10\"}"
 ```
@@ -178,7 +178,7 @@ jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/initiate" \
 
 **Verify the swap exists:**
 ```bash
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/swap/$HASH" \
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/swap/$HASH" \
   -n privatenet -m POST -d '{}'
 ```
 
@@ -193,7 +193,7 @@ jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/swap/$HASH" \
 SECRET="0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c"
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
 
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/claim" \
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/claim" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\",\"secret\":\"$SECRET\"}"
 ```
@@ -239,7 +239,7 @@ jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/claim" \
 ```bash
 # Check Jstz swap status
 HASH="0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c"
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/swap/$HASH" \
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/swap/$HASH" \
   -n privatenet -m POST -d '{}'
 ```
 
@@ -259,7 +259,7 @@ If the swap expires (timelock passes) and the other party didn't claim:
 **On Jstz (CLI):**
 ```bash
 HASH="your_hash_here"
-jstz run "jstz://KT1FuiM76E3meki28sf9nAKBGVcwTCcGp97W/refund" \
+jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/refund" \
   -n privatenet -m POST \
   -d "{\"hashlock\":\"$HASH\"}"
 ```
@@ -429,6 +429,27 @@ MIT License
 - [Etherlink Documentation](https://docs.etherlink.com/)
 - [Etherlink Faucet](https://faucet.etherlink.com)
 - [Etherlink Explorer](https://testnet.explorer.etherlink.com)
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[COOKBOOK.md](./COOKBOOK.md)** | Step-by-step end-to-end swap guide with code examples |
+| **[contracts/etherlink/SECURITY.md](./contracts/etherlink/SECURITY.md)** | Etherlink HTLC security spec & API reference |
+| **[contracts/jstz/SECURITY.md](./contracts/jstz/SECURITY.md)** | Jstz HTLC security spec & API reference |
+
+### Security Features (v2.0 Hardened)
+
+| Feature | Etherlink | Jstz |
+|---------|-----------|------|
+| No admin backdoor | ✅ | ✅ |
+| Claim blocked after expiration | ✅ | ✅ |
+| Secret = 32 bytes enforced | ✅ | ✅ |
+| SHA-256 cross-chain compatible | ✅ | ✅ |
+| Reentrancy protection | ✅ | ✅ |
+| DoS/Dust protection | - | ✅ |
 
 ---
 

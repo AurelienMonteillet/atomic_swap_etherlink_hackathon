@@ -2,14 +2,25 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title HTLC - Hashed Timelock Contract for Atomic Swaps
- * @notice This contract enables trustless cross-chain swaps between Etherlink and Jstz
+ * @title HTLC - Hashed Timelock Contract for Atomic Swaps (HARDENED v2.0)
+ * @notice This contract enables TRUSTLESS cross-chain swaps between Etherlink and Jstz
  * @dev Uses SHA-256 for hashlock verification (cross-chain compatible with Jstz)
+ * 
+ * SECURITY MODEL:
+ * ===============
+ * - NO ADMIN BACKDOORS: emergencyWithdraw removed for true trustlessness
+ * - TIMELOCK ENFORCED: claim blocked after expiration (aligned with Jstz)
+ * - SECRET FORMAT: 32 bytes required (aligned with Jstz 0x + 64 hex)
+ * - REENTRANCY SAFE: status updated before external calls
+ * 
+ * CROSS-CHAIN COMPATIBILITY:
+ * - Secret: 32 bytes raw (= 0x + 64 hex on Jstz)
+ * - Hashlock: SHA-256(secret)
+ * - Same secret works on both chains
  */
 contract HTLC {
-    address private immutable contractOwner;
-
-    enum SwapStatus { OPEN, CLAIMED, EXPIRED }
+    // Status enum - aligned with Jstz (OPEN, CLAIMED, REFUNDED)
+    enum SwapStatus { OPEN, CLAIMED, REFUNDED }
 
     struct SwapDetails {
         address recipient;
@@ -35,6 +46,7 @@ contract HTLC {
     event SwapClaimed(
         bytes32 indexed swapId,
         address claimer,
+        address recipient,
         bytes secret
     );
     
@@ -45,25 +57,18 @@ contract HTLC {
     );
 
     // Errors
-    error CallerNotOwner();
     error ExpirationMustBeInFuture();
     error AmountMustBeGreaterThanZero();
     error SwapAlreadyExists();
     error SwapDoesNotExist();
     error SwapNotOpen();
+    error IncorrectSecretLength();      // NEW: secret must be 32 bytes
     error IncorrectHashLock();
+    error SwapExpired();                // NEW: claim blocked after expiration
     error SwapNotExpiredYet();
     error OnlySenderCanRefund();
+    error UnauthorizedClaimer();        // NEW: only designated recipient can claim
     error TransferFailed();
-
-    constructor() {
-        contractOwner = msg.sender;
-    }
-
-    modifier onlyOwner() {
-        if (msg.sender != contractOwner) revert CallerNotOwner();
-        _;
-    }
 
     modifier futureExpiration(uint256 time) {
         if (time <= block.timestamp) revert ExpirationMustBeInFuture();
@@ -83,7 +88,7 @@ contract HTLC {
     /**
      * @notice Initiate a new atomic swap
      * @param recipient The address that can claim the funds (use address(0) for open swaps)
-     * @param hashLock The SHA-256 hash of the secret
+     * @param hashLock The SHA-256 hash of the 32-byte secret
      * @param expiration Unix timestamp when the swap expires
      * @return swapId The unique identifier for this swap (same as hashLock)
      */
@@ -124,8 +129,10 @@ contract HTLC {
 
     /**
      * @notice Claim funds by revealing the secret
+     * @dev Secret must be exactly 32 bytes (matches Jstz 0x + 64 hex format)
+     * @dev Claim is BLOCKED after expiration (aligned with Jstz)
      * @param swapId The swap identifier (hashLock)
-     * @param secret The preimage that hashes to the hashLock
+     * @param secret The 32-byte preimage that hashes to the hashLock
      * @return success True if claim was successful
      */
     function claimSwap(
@@ -139,13 +146,24 @@ contract HTLC {
     {
         SwapDetails storage swap = swaps[swapId];
         
-        // Verify the secret using SHA-256 (cross-chain compatible)
+        // 1. SECURITY: Block claim after expiration (aligned with Jstz)
+        if (block.timestamp >= swap.expiration) revert SwapExpired();
+        
+        // 2. SECURITY: Secret must be exactly 32 bytes (aligned with Jstz)
+        if (secret.length != 32) revert IncorrectSecretLength();
+        
+        // 3. Verify the secret using SHA-256 (cross-chain compatible)
         if (sha256(secret) != swap.hashLock) revert IncorrectHashLock();
         
-        // Update status before transfer (reentrancy protection)
+        // 4. SECURITY: If recipient is specified, only that address can claim
+        if (swap.recipient != address(0) && msg.sender != swap.recipient) {
+            revert UnauthorizedClaimer();
+        }
+        
+        // 5. Update status before transfer (reentrancy protection)
         swap.status = SwapStatus.CLAIMED;
         
-        // Determine recipient
+        // 6. Determine recipient
         address payable claimRecipient;
         if (swap.recipient == address(0)) {
             claimRecipient = payable(msg.sender);
@@ -154,11 +172,11 @@ contract HTLC {
             claimRecipient = payable(swap.recipient);
         }
         
-        // Transfer funds
+        // 6. Transfer funds
         (bool sent, ) = claimRecipient.call{value: swap.amount}("");
         if (!sent) revert TransferFailed();
         
-        emit SwapClaimed(swapId, msg.sender, secret);
+        emit SwapClaimed(swapId, msg.sender, claimRecipient, secret);
         
         return true;
     }
@@ -176,13 +194,16 @@ contract HTLC {
     {
         SwapDetails storage swap = swaps[swapId];
         
+        // 1. Check expiration has passed
         if (block.timestamp < swap.expiration) revert SwapNotExpiredYet();
+        
+        // 2. Only sender can refund
         if (msg.sender != swap.sender) revert OnlySenderCanRefund();
         
-        // Update status before transfer (reentrancy protection)
-        swap.status = SwapStatus.EXPIRED;
+        // 3. Update status before transfer (reentrancy protection)
+        swap.status = SwapStatus.REFUNDED;  // Renamed from EXPIRED for consistency
         
-        // Transfer funds back to sender
+        // 4. Transfer funds back to sender
         (bool sent, ) = swap.sender.call{value: swap.amount}("");
         if (!sent) revert TransferFailed();
         
@@ -199,7 +220,7 @@ contract HTLC {
      * @return amount The locked amount
      * @return expiration The expiration timestamp
      * @return hashLock The hashlock
-     * @return status The current status
+     * @return status The current status (OPEN=0, CLAIMED=1, REFUNDED=2)
      */
     function getSwap(bytes32 swapId) 
         external 
@@ -241,21 +262,15 @@ contract HTLC {
     }
 
     /**
-     * @notice Emergency withdrawal (owner only)
-     * @param amount Amount to withdraw
-     */
-    function emergencyWithdraw(uint256 amount) external onlyOwner {
-        (bool sent, ) = payable(contractOwner).call{value: amount}("");
-        if (!sent) revert TransferFailed();
-    }
-
-    /**
      * @notice Get contract balance
+     * @dev For transparency - anyone can verify locked funds
      */
     function getBalance() external view returns (uint256) {
         return address(this).balance;
     }
 
+    /**
+     * @notice Accept direct transfers (for funding)
+     */
     receive() external payable {}
 }
-
