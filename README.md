@@ -87,7 +87,7 @@ Should output something like: `{"status":"healthy","swaps_count":...}`
 
 ---
 
-### Step 5 (Optional): Install Jstz Wallet Extension
+### Step 5 (Recommended): Install Jstz Wallet Extension
 
 For signing Jstz transactions directly from the browser instead of CLI:
 
@@ -100,13 +100,56 @@ For signing Jstz transactions directly from the browser instead of CLI:
 7. Select the `apps/signer/dist` folder from the unzipped files
 8. The extension appears in your toolbar - click it to create an account
 
-**Without the extension:** You'll see CLI commands to copy/paste in your terminal.
+**Benefits of the extension:**
+- Sign transactions directly in the browser
+- Auto-fill secret works better (can query Jstz swaps)
+- No need to copy/paste CLI commands
+- Better UX for all Jstz operations
+
+**Without the extension:** You'll see CLI commands to copy/paste in your terminal for each operation.
 
 ---
 
 ### ✅ You're ready! 
 
 Go to [https://atomic-swap-etherlink-hackathon.vercel.app](https://atomic-swap-etherlink-hackathon.vercel.app) and start swapping!
+
+---
+
+## ✨ Key Features
+
+### 🌐 Full Web Interface
+
+The app provides a complete web interface with 4 main tabs:
+
+1. **Initiate** - Lock funds and create a swap (Alice)
+2. **Join** - Match an existing swap by entering the hashlock (Bob)
+3. **Redeem** - Claim or refund funds using the swap ID
+4. **My Swaps** - View all your active and completed swaps
+
+### 🔍 Auto-Fill Secret
+
+When claiming funds in the **Redeem** tab:
+- Enter the Swap ID / HashLock
+- Click **"Auto-fill"** button
+- The app automatically searches for the revealed secret on both blockchains:
+  - **Etherlink**: Uses Blockscout API to find secrets from claimed swaps
+  - **Jstz**: Checks your loaded swaps or queries via wallet
+- The secret is automatically filled in if found!
+
+### 🔗 Transaction Links
+
+All transaction links point directly to the specific transaction:
+- **Etherlink**: Links to `explorer.etherlink.com/tx/{hash}`
+- **Jstz**: Links to `dashboard.jstz.info/operations/{hash}?tab=response` (shows response body with secrets)
+
+### 🔄 Bidirectional Swaps
+
+You can initiate swaps in either direction:
+- **Etherlink → Jstz**: Initiate on Etherlink, match on Jstz
+- **Jstz → Etherlink**: Initiate on Jstz, match on Etherlink
+
+The interface automatically adapts based on your selected chain.
 
 ---
 
@@ -221,16 +264,18 @@ jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/claim" \
 
 **In the browser:**
 
-1. Go to http://localhost:8080
+1. Go to [https://atomic-swap-etherlink-hackathon.vercel.app](https://atomic-swap-etherlink-hackathon.vercel.app)
 2. Connect MetaMask (Etherlink)
-3. Go to **"Claim/Refund"** tab
-4. Enter:
-   - **Swap ID / Hash**: `0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c`
-   - **Secret**: `0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c`
-5. Click **"Claim"**
-6. Confirm in MetaMask
+3. Go to **"Redeem"** tab
+4. Enter the **Swap ID / Hash**: `0x7398c0867ead74a1861828d540743bf10d07690519b2bdd716dd1512f2a8f41c`
+5. **💡 Tip**: Click **"Auto-fill"** to automatically find the revealed secret!
+   - Or manually enter: `0x45bb7983ccd97365ac019514d61631d7ea6f5bbffb4dd9ff4d3f7271a81b968c`
+6. Click **"Claim Funds"**
+7. Confirm in MetaMask
 
 **✅ Swap Complete!** Both parties have received their funds.
+
+**Note**: The auto-fill feature searches for revealed secrets on both Etherlink (via Blockscout API) and Jstz (via wallet or loaded swaps).
 
 ---
 
@@ -252,11 +297,19 @@ Should show: `"status": "CLAIMED"` ✅
 If the swap expires (timelock passes) and the other party didn't claim:
 
 **On Etherlink (browser):**
-1. Go to "Claim/Refund" tab
+1. Go to **"Redeem"** tab
 2. Enter the Swap ID
-3. Click "Refund"
+3. Click **"Refund"**
+4. Confirm in MetaMask
 
-**On Jstz (CLI):**
+**On Jstz (browser with wallet extension):**
+1. Go to **"Redeem"** tab
+2. Connect Jstz wallet
+3. Enter the Swap ID
+4. Click **"Refund"**
+5. Sign with wallet
+
+**On Jstz (CLI - if no wallet extension):**
 ```bash
 HASH="your_hash_here"
 jstz run "jstz://KT1HCuUJm1rZWqnicoXFHu7H3TP8912G1qmn/refund" \
@@ -410,9 +463,10 @@ Wait a few seconds and refresh. Etherlink blocks are ~10 seconds.
 ## 🏗️ Tech Stack
 
 - **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript, ethers.js v5
-- **Etherlink**: Solidity 0.8.20, Hardhat, OpenZeppelin
-- **Jstz**: JavaScript Smart Functions, Kv storage
+- **Etherlink**: Solidity 0.8.20, Hardhat, OpenZeppelin, Blockscout API v2
+- **Jstz**: JavaScript Smart Functions, Kv storage, Jstz Wallet Extension
 - **Hash Algorithm**: SHA-256 (cross-chain compatible)
+- **APIs**: Blockscout (Etherlink), Jstz Dashboard (Jstz)
 
 ---
 
