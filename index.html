@@ -4011,64 +4011,14 @@
         function skipJstzVerification() {
             const hashInput = document.getElementById('hash-input');
             const hashLock = hashInput.value.trim();
-            const aliceDetails = document.getElementById('alice-swap-details');
-            const actionBtn = document.getElementById('main-action-btn');
-            const verifyJstzBtn = document.getElementById('verify-jstz-btn');
-            const skipVerifyBtn = document.getElementById('skip-verify-btn');
             
             if (!isValidHashLock(hashLock)) {
                 log("❌ Please enter a valid HashLock first", 'error');
                 return;
             }
             
-            // Ask for confirmation
-            const confirmed = confirm(
-                "⚠️ IMPORTANT: Only proceed if you have verified the swap via CLI!\n\n" +
-                "Run this command to verify:\n" +
-                `jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m POST -d '{}'\n\n` +
-                "Make sure:\n" +
-                "✓ The swap exists and is OPEN\n" +
-                "✓ The amount is what you agreed upon\n" +
-                "✓ The expiration gives you enough time\n\n" +
-                "Click OK to continue, Cancel to abort."
-            );
-            
-            if (!confirmed) {
-                log("❌ Verification cancelled", 'warning');
-                return;
-            }
-            
-            // Mark as verified (user takes responsibility)
-            state.aliceSwapVerified = true;
-            state.aliceSwapChain = 'jstz';
-            state.currentSwapId = hashLock;
-            state.hash = hashLock;
-            
-            // Update UI
-            aliceDetails.classList.remove('hidden');
-            document.getElementById('alice-swap-amount').textContent = '(Verified via CLI)';
-            document.getElementById('alice-swap-expiry').textContent = '(Check CLI output)';
-            document.getElementById('alice-swap-sender').textContent = '(Check CLI output)';
-            document.getElementById('alice-swap-chain').textContent = 'Jstz';
-            document.getElementById('alice-swap-status').textContent = 'CLI VERIFIED';
-            document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400';
-            
-            // Hide verification buttons
-            verifyJstzBtn.classList.add('hidden');
-            skipVerifyBtn.classList.add('hidden');
-            
-            // Enable the main action button
-            actionBtn.disabled = false;
-            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-gradient-to-r from-ether-green to-green-400 hover:opacity-90 text-black shadow-lg shadow-ether-green/20 flex items-center justify-center gap-2 transition";
-            actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
-            
-            log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
-            log("⚠️ CLI VERIFICATION ACCEPTED", 'warning');
-            log("You confirmed verifying the swap via CLI", 'info');
-            log("Make sure you checked the amount and expiration!", 'warning');
-            log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", 'system');
-            log("✅ Ready to match swap on Etherlink", 'success');
-            log("Enter your amount and click 'Match Swap'", 'info');
+            // Show the custom CLI verification modal
+            showCliVerifyModal(hashLock);
         }
         
         // ============================================
@@ -4238,20 +4188,26 @@
             verifyBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
             verifyBtn.disabled = true;
             
-            log(`🔍 Verifying Alice's swap on ${state.connectedWallet === 'jstz' ? 'Jstz' : 'Etherlink'}...`, 'warning');
+            // IMPORTANT: In Join mode, state.chain indicates WHERE BOB WILL MATCH
+            // So Alice's swap is on the OPPOSITE chain!
+            // - Bob matches on Jstz (state.chain === 'jstz') → Alice initiated on Etherlink
+            // - Bob matches on Etherlink (state.chain === 'etherlink') → Alice initiated on Jstz
+            const aliceChain = state.chain === 'jstz' ? 'Etherlink' : 'Jstz';
+            
+            log(`🔍 Verifying Alice's swap on ${aliceChain}...`, 'warning');
             
             try {
                 let result;
                 let chain;
                 
-                // Bob is connected to Jstz → Alice's swap is on Etherlink
-                // Bob is connected to Etherlink → Alice's swap is on Jstz
-                if (state.connectedWallet === 'jstz') {
-                    // Bob on Jstz, verify Alice on Etherlink
+                // Bob matches on Jstz → Alice's swap is on Etherlink
+                // Bob matches on Etherlink → Alice's swap is on Jstz
+                if (state.chain === 'jstz') {
+                    // Bob will match on Jstz, verify Alice on Etherlink
                     result = await verifySwapOnEtherlink(hashLock, SwapState.OPEN);
                     chain = 'Etherlink';
                 } else {
-                    // Bob on Etherlink, Alice on Jstz - try direct HTTP read
+                    // Bob will match on Etherlink, Alice on Jstz - try direct HTTP read
                     log("🔍 Attempting to verify Jstz swap via direct API...", 'warning');
                     
                     // Try to read swap data directly from Jstz
@@ -6037,6 +5993,84 @@
         </div>
     </div>
     
+    <!-- CLI Verification Modal (for Skip Jstz Verification) -->
+    <div id="cli-verify-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 items-center justify-center" style="display: none;">
+        <div class="bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a] border border-orange-500/30 rounded-2xl p-6 max-w-xl w-full mx-4 shadow-2xl shadow-orange-500/10">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-gradient-to-br from-orange-500/20 to-yellow-500/20 rounded-xl flex items-center justify-center">
+                        <i class="fa-solid fa-terminal text-xl text-orange-400"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">CLI Verification</h3>
+                        <p class="text-xs text-gray-400">Verify Alice's swap manually</p>
+                    </div>
+                </div>
+                <button onclick="closeCliVerifyModal()" class="text-gray-400 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-lg">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Warning Banner -->
+            <div class="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 mb-5">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-triangle-exclamation text-orange-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-orange-200 font-semibold mb-1">⚠️ Manual Verification Required</p>
+                        <p class="text-xs text-orange-200/70">Only proceed if you have verified the swap details via CLI. You are responsible for checking the swap is valid.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CLI Command -->
+            <div class="mb-5">
+                <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Run this command to verify:</label>
+                <div class="relative group">
+                    <pre id="cli-verify-command" class="bg-black/50 border border-white/10 rounded-xl p-4 text-sm text-green-400 font-mono overflow-x-auto whitespace-pre-wrap break-all pr-20"></pre>
+                    <button onclick="copyCliVerifyCommand()" class="absolute top-2 right-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 group-hover:scale-105">
+                        <i class="fa-regular fa-copy"></i>
+                        <span id="copy-cli-verify-text">Copy</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Checklist -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-5">
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-check"></i>
+                    Verification Checklist
+                </p>
+                <div class="space-y-2">
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer hover:text-white transition group">
+                        <input type="checkbox" id="cli-check-1" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-orange-500 focus:ring-orange-500 focus:ring-offset-0">
+                        <span class="group-hover:translate-x-0.5 transition-transform">Swap exists and status is <code class="bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded text-xs">OPEN</code></span>
+                    </label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer hover:text-white transition group">
+                        <input type="checkbox" id="cli-check-2" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-orange-500 focus:ring-orange-500 focus:ring-offset-0">
+                        <span class="group-hover:translate-x-0.5 transition-transform">Amount matches what you agreed upon</span>
+                    </label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer hover:text-white transition group">
+                        <input type="checkbox" id="cli-check-3" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-orange-500 focus:ring-orange-500 focus:ring-offset-0">
+                        <span class="group-hover:translate-x-0.5 transition-transform">Expiration gives you enough time</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
+                <button onclick="closeCliVerifyModal()" class="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold transition-all border border-white/10">
+                    <i class="fa-solid fa-xmark mr-2"></i>Cancel
+                </button>
+                <button onclick="confirmCliVerification()" id="cli-verify-confirm-btn" class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-white font-bold shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-600 disabled:to-gray-600" disabled>
+                    <i class="fa-solid fa-check mr-2"></i>I Verified, Continue
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         // CLI Modal functions
         let pendingCliCommand = null;
@@ -6078,6 +6112,107 @@
                 btnText.textContent = 'Copied!';
                 setTimeout(() => btnText.textContent = 'Copy', 2000);
             });
+        }
+        
+        // ========================================
+        // CLI VERIFICATION MODAL (Skip Jstz Verification)
+        // ========================================
+        
+        let pendingCliVerifyHashlock = null;
+        
+        function showCliVerifyModal(hashLock) {
+            pendingCliVerifyHashlock = hashLock;
+            
+            const modal = document.getElementById('cli-verify-modal');
+            const commandEl = document.getElementById('cli-verify-command');
+            const confirmBtn = document.getElementById('cli-verify-confirm-btn');
+            
+            // Build the CLI command
+            const command = `jstz run "jstz://${CONFIG.jstz.contractAddress}/swap/${hashLock}" -n privatenet -m GET`;
+            commandEl.textContent = command;
+            
+            // Reset checkboxes
+            document.getElementById('cli-check-1').checked = false;
+            document.getElementById('cli-check-2').checked = false;
+            document.getElementById('cli-check-3').checked = false;
+            confirmBtn.disabled = true;
+            
+            // Add event listeners to checkboxes
+            ['cli-check-1', 'cli-check-2', 'cli-check-3'].forEach(id => {
+                document.getElementById(id).onchange = updateCliVerifyButton;
+            });
+            
+            // Show modal with animation
+            modal.style.display = 'flex';
+            modal.style.opacity = '0';
+            setTimeout(() => modal.style.opacity = '1', 10);
+        }
+        
+        function updateCliVerifyButton() {
+            const check1 = document.getElementById('cli-check-1').checked;
+            const check2 = document.getElementById('cli-check-2').checked;
+            const check3 = document.getElementById('cli-check-3').checked;
+            const confirmBtn = document.getElementById('cli-verify-confirm-btn');
+            
+            confirmBtn.disabled = !(check1 && check2 && check3);
+        }
+        
+        function closeCliVerifyModal() {
+            const modal = document.getElementById('cli-verify-modal');
+            modal.style.opacity = '0';
+            setTimeout(() => {
+                modal.style.display = 'none';
+                pendingCliVerifyHashlock = null;
+            }, 300);
+        }
+        
+        function copyCliVerifyCommand() {
+            const commandEl = document.getElementById('cli-verify-command');
+            const btnText = document.getElementById('copy-cli-verify-text');
+            
+            navigator.clipboard.writeText(commandEl.textContent).then(() => {
+                btnText.textContent = 'Copied!';
+                setTimeout(() => btnText.textContent = 'Copy', 2000);
+            });
+        }
+        
+        function confirmCliVerification() {
+            if (!pendingCliVerifyHashlock) return;
+            
+            const hashLock = pendingCliVerifyHashlock;
+            closeCliVerifyModal();
+            
+            // Mark as verified (user takes responsibility)
+            state.aliceSwapVerified = true;
+            state.aliceSwapChain = 'jstz';
+            state.currentSwapId = hashLock;
+            state.hash = hashLock;
+            
+            // Update UI
+            const aliceDetails = document.getElementById('alice-swap-details');
+            const actionBtn = document.getElementById('main-action-btn');
+            const verifyJstzBtn = document.getElementById('verify-jstz-btn');
+            const skipVerifyBtn = document.getElementById('skip-verify-btn');
+            
+            aliceDetails.classList.remove('hidden');
+            document.getElementById('alice-swap-amount').textContent = '(Verified via CLI)';
+            document.getElementById('alice-swap-expiry').textContent = '(Check CLI output)';
+            document.getElementById('alice-swap-sender').textContent = '(Check CLI output)';
+            document.getElementById('alice-swap-chain').textContent = 'Jstz';
+            document.getElementById('alice-swap-status').textContent = 'CLI VERIFIED';
+            document.getElementById('alice-swap-status').className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-400';
+            
+            // Hide verification buttons
+            if (verifyJstzBtn) verifyJstzBtn.classList.add('hidden');
+            if (skipVerifyBtn) skipVerifyBtn.classList.add('hidden');
+            
+            // Enable the main action button
+            actionBtn.disabled = false;
+            actionBtn.innerHTML = `<span>Match Swap</span><i class="fa-solid fa-arrow-right"></i>`;
+            actionBtn.className = "w-full py-4 rounded-xl text-lg font-bold bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-400 hover:to-yellow-400 text-black shadow-lg flex items-center justify-center gap-2 transition-all";
+            
+            log(`✅ Swap marked as verified via CLI`, 'success');
+            log(`⚠️ You are responsible for verifying the swap details`, 'warning');
         }
         
         // ========================================
