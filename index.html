@@ -5811,6 +5811,7 @@
         generateNewSecret();
         updateProgress(1);
         renderTokenDropdown(); // Initialize token dropdown
+        updateCounterpartyUI(); // Initialize counterparty field with correct labels
         log("Atomic Swap ready. Connect wallets to begin.", 'system');
         log(`Etherlink Contract: ${CONFIG.etherlink.contractAddress}`, 'info');
         log(`Jstz Function: ${CONFIG.jstz.functionAddress}`, 'info');
