@@ -26,6 +26,22 @@ Demonstrates secure cross-chain asset exchange using Hashed Timelock Contracts (
 
 That's it! The frontend is already deployed and ready to use.
 
+### 🖥️ Run the frontend locally (for testing)
+
+If you want to exercise the UI against your own wallets, you can serve the static files locally with the built-in Python web server:
+
+```bash
+# From the repository root
+npm start
+
+# Or run the underlying command directly
+python3 -m http.server 8080
+
+# Visit http://localhost:8080/index.html
+```
+
+No external build steps are required—the app stays 100% static.
+
 ---
 
 ### Step 2: Configure MetaMask (for Etherlink)
