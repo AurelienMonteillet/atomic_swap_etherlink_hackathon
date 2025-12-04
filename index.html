@@ -403,7 +403,7 @@
                             <h3 class="text-white font-semibold text-sm mb-1">First time here? 👋</h3>
                             <p class="text-gray-400 text-xs leading-relaxed">
                                 This is a <span class="text-ether-green font-medium">trustless atomic swap</span> between Etherlink and Jstz. 
-                                You'll need <span class="text-white">MetaMask</span> + <span class="text-jstz-accent">Jstz Wallet</span> to complete a swap.
+                                You'll need an <span class="text-white">EVM wallet</span> (MetaMask, Rabby, etc.) + <span class="text-jstz-accent">Jstz Wallet</span> to complete a swap.
                             </p>
                         </div>
                     </div>
@@ -1194,23 +1194,23 @@
             log(`Hash: ${hash.substring(0, 18)}...`, 'system');
         }
 
-        // Connect to Etherlink (MetaMask or local)
+        // Connect to Etherlink (EVM wallet or local)
         async function connectEtherlink() {
             try {
                 console.log('[DEBUG] Starting Etherlink connection...');
                 
                 if (typeof window.ethereum !== 'undefined') {
-                    // Use MetaMask
-                    console.log('[DEBUG] MetaMask detected, requesting accounts...');
+                    // Use EVM wallet (MetaMask, Rabby, etc.)
+                    console.log('[DEBUG] EVM wallet detected, requesting accounts...');
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
                     state.provider = new ethers.providers.Web3Provider(window.ethereum);
                     state.signer = state.provider.getSigner();
                     state.etherlinkAddress = await state.signer.getAddress();
                     console.log('[DEBUG] Connected address:', state.etherlinkAddress);
-                    log(`MetaMask connected: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
+                    log(`EVM wallet connected: ${state.etherlinkAddress.substring(0, 6)}...${state.etherlinkAddress.slice(-4)}`, 'success');
                 } else {
                     // Fallback to local Hardhat node
-                    console.log('[DEBUG] No MetaMask, falling back to local node');
+                    console.log('[DEBUG] No EVM wallet, falling back to local node');
                     state.provider = new ethers.providers.JsonRpcProvider(CONFIG.etherlink.rpcUrl);
                     state.signer = state.provider.getSigner(0);
                     state.etherlinkAddress = await state.signer.getAddress();
@@ -1585,10 +1585,10 @@
             }
         }
 
-        // Add Etherlink network to MetaMask
+        // Add Etherlink network to EVM wallet
         async function addEtherlinkToMetaMask(chainId = 128123) {
             if (typeof window.ethereum === 'undefined') {
-                log('MetaMask not installed', 'error');
+                log('EVM wallet not detected', 'error');
                 return false;
             }
             
@@ -1613,7 +1613,7 @@
                         blockExplorerUrls: networkConfig.explorer ? [networkConfig.explorer] : null
                     }]
                 });
-                log(`${networkConfig.name} added to MetaMask!`, 'success');
+                log(`${networkConfig.name} added to wallet!`, 'success');
                 return true;
             } catch (error) {
                 log(`Failed to add network: ${error.message}`, 'error');
@@ -1621,7 +1621,7 @@
             }
         }
 
-        // Switch MetaMask to Etherlink network
+        // Switch EVM wallet to Etherlink network
         async function switchToEtherlink(chainId = 128123) {
             if (typeof window.ethereum === 'undefined') return false;
             
@@ -2663,7 +2663,7 @@
             }
         }
 
-        // Add to MetaMask wallet
+        // Add token to EVM wallet
         async function addTokenToWallet(symbol) {
             const token = TOKENS[symbol];
             if (!token || token.isNative) {
@@ -2672,7 +2672,7 @@
             }
 
             if (typeof window.ethereum === 'undefined') {
-                log('MetaMask not detected', 'error');
+                log('EVM wallet not detected', 'error');
                 return;
             }
 
@@ -4100,7 +4100,7 @@
                             document.getElementById('timelock-input').value = suggestedTimelock;
                             log(`⚙️ Suggested timelock: ${suggestedTimelock} minutes (half of Alice's remaining time)`, 'system');
                             
-                            log(`💡 Now switch back to MetaMask/Etherlink to match the swap!`, 'success');
+                            log(`💡 Now switch back to your EVM wallet/Etherlink to match the swap!`, 'success');
                         } else {
                             log(`❌ Cannot match: swap is ${swap.status}${remaining <= 0 ? ' (expired)' : ''}`, 'error');
                             actionBtn.disabled = true;
@@ -5131,7 +5131,7 @@
             
             // Determine which chain to claim on based on CONNECTED WALLET
             if (state.connectedWallet === 'etherlink') {
-                // Connected to Etherlink (MetaMask) → Claim on Etherlink
+                // Connected to Etherlink (EVM wallet) → Claim on Etherlink
                 log('📍 Connected to Etherlink - claiming on Etherlink...', 'warning');
                 await claimOnEtherlink();
             } else if (state.connectedWallet === 'jstz') {
@@ -5735,7 +5735,7 @@
             }
         });
 
-        // Listen for MetaMask network/account changes
+        // Listen for EVM wallet network/account changes
         if (typeof window.ethereum !== 'undefined') {
             window.ethereum.on('chainChanged', async (chainId) => {
                 const newChainId = parseInt(chainId, 16);
@@ -5767,7 +5767,7 @@
                 }
             });
             
-            console.log('[DEBUG] MetaMask event listeners attached');
+            console.log('[DEBUG] EVM wallet event listeners attached');
         }
 
     </script>
