@@ -936,8 +936,7 @@
             ETHERLINK_TESTNET: 128123
         };
 
-        // Etherlink Tokens - Simplified for POC
-        // Only XTZ (native) and WXTZ (wrapped) for atomic swap demonstration
+        // Etherlink Tokens - Only XTZ (native) for atomic swap demonstration
         const TOKENS = {
             XTZ: {
                 symbol: 'XTZ',
@@ -947,19 +946,6 @@
                 icon: 'https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026',
                 isNative: true,
                 chains: [CHAIN_IDS.HARDHAT_LOCAL, CHAIN_IDS.ETHERLINK_MAINNET, CHAIN_IDS.ETHERLINK_TESTNET]
-            },
-            WXTZ: {
-                symbol: 'WXTZ',
-                name: 'Wrapped XTZ',
-                // Addresses per network
-                addresses: {
-                    [CHAIN_IDS.ETHERLINK_MAINNET]: '0xc9B53AB2679f573e480d01e0f49e2B5CFB7a3EAb',
-                    [CHAIN_IDS.ETHERLINK_TESTNET]: '0xB1Ea698633d57705e93b0E40c1077d46CD6A51d8'
-                },
-                decimals: 18,
-                icon: 'https://cryptologos.cc/logos/tezos-xtz-logo.svg?v=026',
-                isNative: false,
-                chains: [CHAIN_IDS.ETHERLINK_MAINNET, CHAIN_IDS.ETHERLINK_TESTNET]
             }
         };
 
