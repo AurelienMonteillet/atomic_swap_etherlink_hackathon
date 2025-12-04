@@ -33,6 +33,8 @@ Thumbs.db
 *.tmp
 *.temp
 screenshots/
+# Allow logo/favicon images
+!image.png
 *.png
 *.jpg
 
